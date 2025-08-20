@@ -159,22 +159,25 @@ void printTof()
 void setup() {
 
   interval = 40 * 1000;
+
   analogReadResolution(10);
+
+  Serial.begin(115200);
+
+  Wire.setSDA(4);
+  Wire.setSCL(5);
+
+  Wire.begin();
+
 
   initializeEncoders();
   encoders[0].begin(encoder_pins[0]);
   encoders[1].begin(encoder_pins[1]);
   
-  Wire.setSCL(5);
-  Wire.setSDA(4);
-  Wire.begin();
 
   initializeMotors();
 
   stof.initializeToFSensor();
-
-  Serial.begin(115200);
-
 }
 
 void loop() {
@@ -184,7 +187,7 @@ void loop() {
     previousMicros = currentMicros;
 
     read_PIO_encoders();
-    //stof.calculateTOF();
+    stof.calculateTOF();
     robot.odometry();
 
 
@@ -192,6 +195,7 @@ void loop() {
     //printOdometry();
     printTof();
     Serial.println();
+
   }
 }
 
