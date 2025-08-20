@@ -163,6 +163,16 @@ void setup() {
   analogReadResolution(10);
 
   Serial.begin(115200);
+  Serial1.begin(230400);
+
+  Serial1.write("0xC3");
+  
+
+  // Setup motor pin
+  //analogWriteFreq(10000); // 10 kHz PWM
+  //analogWriteRange(255);
+   // 50% duty cycle
+
 
   Wire.setSDA(4);
   Wire.setSCL(5);
@@ -180,6 +190,8 @@ void setup() {
   stof.initializeToFSensor();
 }
 
+uint8_t b;
+
 void loop() {
 
   currentMicros = micros();
@@ -196,6 +208,12 @@ void loop() {
     printTof();
     Serial.println();
 
+    Serial1.write("b");
+    delay(2000);
+    Serial1.write("e");
+    delay(2000);
+
+    //Serial.println();
   }
 }
 
