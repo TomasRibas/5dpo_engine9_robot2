@@ -11,19 +11,17 @@
 
 class TOF {
 public:
-TOF();  // initialize I2C and sensor instance
+    TOF();  // initialize I2C and sensor instance
 
-float distance_tof = 0.0f;
-float prev_distance_tof = 0.0f;
+    float distance_tof = 0.0f;
+    float prev_distance_tof = 0.0f;
 
-void initializeToFSensor();
-void calculateTOF();
+    void initializeToFSensor();
+    void calculateTOF();
 
 private:
-VL53L4CX sensor;
-VL53L4CX_MultiRangingData_t ranging_data;
-bool led_state = false;
-uint8_t loop_count = 0;
+    VL53L4CX sensor;
+    VL53L4CX_MultiRangingData_t ranging_data;
 };
 
 #endif
