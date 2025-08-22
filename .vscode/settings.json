@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "array": "cpp",
+        "fstream": "cpp",
+        "future": "cpp",
+        "sstream": "cpp",
+        "streambuf": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
+}

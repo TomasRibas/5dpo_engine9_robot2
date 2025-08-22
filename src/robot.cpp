@@ -15,7 +15,7 @@ template <typename T> int sign(T val)
 robot_t::robot_t()
 {
   pos=0;
-  wheel_dist = 0.125;
+  wheel_dist = 0.115;//foi diminuido 1 cm da realidade para fazer "360º" mais accurate
   wheel_radius = 0.0689 / 2;
   dv_max = 5;
   dw_max = 10;
@@ -35,8 +35,8 @@ void robot_t::odometry(void)
 {
   
   // Estimate wheels speed using the encoders
-  w1e = enc1 * TWO_PI / (2.0 * 1920.0 * dt);
-  w2e = enc2 * TWO_PI / (2.0 * 1920.0 * dt);
+  w1e = enc1 * (TWO_PI / (64 * 2 * 1920));//(2.0 * 1920.0 * dt); DÚVIDA!!!
+  w2e = enc2 * (TWO_PI / (64* 2 * 1920));//(2.0 * 1920.0 * dt); DÚVIDA!!!
 
   v1e = w1e * wheel_radius;
   v2e = w2e * wheel_radius;

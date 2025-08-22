@@ -5,12 +5,18 @@
 #include "robot.h"
 #include "trajectories.h"
 
+#include "lds_driver.hpp"
+
+
 #include "gchannels.h"
 
 TOF stof;
 
-void init_control(robot_t& robot);
-void control(robot_t& robot);
+// Create after optional Serial1 pin mapping, so use a pointer:
+lds::LFCDLaser* lidar = nullptr;
+
+//void init_control(robot_t& robot);
+//void control(robot_t& robot);
 
 PID_pars_t wheel_PID_pars;
 
@@ -27,14 +33,11 @@ int analogWriteMax = (1 << analogWriteBits) - 1;
 SerialPIO SerialTiny(SerialPIO::NOPIN, 21);
 
 
-
-
 /////////////////////////////MOTORS/////////////////////////////
 const int motor_left_in1 = 10;
 const int motor_left_in2 = 11;
 const int motor_right_in1 = 12;
 const int motor_right_in2 = 13;
-
 
 
 //////////////////////////////ENCODERS///////////////////////////////
@@ -62,7 +65,6 @@ void read_PIO_encoders(void)
 
 }
 
-
 void initializeEncoders()
 {
   pinMode(ENCL_A, INPUT_PULLUP);
@@ -83,40 +85,42 @@ void initializeMotors()
 
 float voltageToPWM(float voltage, float maxVoltage, float maxPWM)
 {
-    // Map voltage to PWM
-    int pwm = (voltage / maxVoltage) * maxPWM;
+  if (maxVoltage < 1e-3f) return 0;   // avoid NaN/Inf at boot
+
+  // Map voltage to PWM
+  int pwm = (voltage / maxVoltage) * maxPWM;
   
-    // Constrain the PWM value to the valid range
-    pwm = constrain(pwm, -maxPWM, maxPWM);
-    return pwm;
+  // Constrain the PWM value to the valid range
+  pwm = constrain(pwm, -maxPWM, maxPWM);
+  return pwm;
 }
 
-void setMotorsPWM(float u1, float u2, float u3, float u4)
+void setMotorsPWM(float u1, float u2)
 {
 
-    float maxVoltage = robot.battery_voltage; // Maximum voltage
-    float maxPWM = 230;      // Maximum PWM value for 8-bit resolution
+  float maxVoltage = robot.battery_voltage; // Maximum voltage
+  float maxPWM = 230;      // Maximum PWM value for 8-bit resolution
   
-    int PWM1 = voltageToPWM(u1, maxVoltage, maxPWM);
-    int PWM2 = voltageToPWM(u2, maxVoltage, maxPWM);
+  int PWM1 = voltageToPWM(u1, maxVoltage, maxPWM);
+  int PWM2 = voltageToPWM(u2, maxVoltage, maxPWM);
 
-    if (PWM1 > 0){
-        analogWrite(motor_left_in1, PWM1);
-        digitalWrite(motor_left_in2, LOW);
-    }else{
-      PWM1 = -PWM1;
-        analogWrite(motor_left_in2, PWM1);
-        digitalWrite(motor_left_in1, LOW);
-    }
-  
-    if (PWM2 > 0){
-        analogWrite(motor_right_in1, PWM2);
-        digitalWrite(motor_right_in2, LOW);
-    }else{
-        PWM2 = -PWM2;
-        analogWrite(motor_right_in2, PWM2);
-        digitalWrite(motor_right_in1, LOW);
-    }
+  if (PWM1 > 0){
+      analogWrite(motor_left_in1, PWM1);
+      digitalWrite(motor_left_in2, LOW);
+  }else{
+    PWM1 = -PWM1;
+    analogWrite(motor_left_in2, PWM1);
+    digitalWrite(motor_left_in1, LOW);
+  }
+
+  if (PWM2 > 0){
+    analogWrite(motor_right_in1, PWM2);
+    digitalWrite(motor_right_in2, LOW);
+  }else{
+    PWM2 = -PWM2;
+    analogWrite(motor_right_in2, PWM2);
+    digitalWrite(motor_right_in1, LOW);
+  }
 
 }
 
@@ -163,10 +167,9 @@ void setup() {
   analogReadResolution(10);
 
   Serial.begin(115200);
-  Serial1.begin(230400);
+  initializeMotors();
 
-  Serial1.write("0xC3");
-  
+  lidar = new lds::LFCDLaser(230400);  // ctor signature per new header :contentReference[oaicite:3]{index=3}
 
   // Setup motor pin
   //analogWriteFreq(10000); // 10 kHz PWM
@@ -184,34 +187,67 @@ void setup() {
   encoders[0].begin(encoder_pins[0]);
   encoders[1].begin(encoder_pins[1]);
   
-
-  initializeMotors();
-
   stof.initializeToFSensor();
+
+  SerialTiny.begin(); //leitura da tensão da bateria
+
+  robot.control_mode = cm_pid;
 }
 
 uint8_t b;
 
 void loop() {
+  
+  if (SerialTiny.available()) { 
+    b = SerialTiny.read();  
+    robot.battery_voltage = 1e-3 * ((b >> 1) * 50 + 4800);
+  }
+
+  /*if (Serial1.available()) {
+    int b = Serial1.read();
+    if (b >= 0) {
+      Serial.print("0x"); Serial.print(b, HEX);
+    }
+  }*/
+  lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
+
 
   currentMicros = micros();
   if(currentMicros - previousMicros >= interval){
     previousMicros = currentMicros;
 
     read_PIO_encoders();
-    stof.calculateTOF();
+    //stof.calculateTOF();
+
     robot.odometry();
 
+  /*if (robot.xe < 0.29){
+      robot.v = 0.05;
+      robot.w = 0;
+    }else{
+      robot.v = 0;
+      robot.w = 0;     
+    }
+   if (robot.thetae<6.28){
+      robot.w1_req=2;
+      robot.w2_req=0;
+    } else {
+      robot.w1_req=0;
+      robot.w2_req=0;
+    }*/
+   
+    //Serial1.write("e");
 
     //printEncoders();
     //printOdometry();
-    printTof();
-    Serial.println();
+    //printTof();
+    //Serial.printf(" rel_s: %f", robot.rel_s);
+    //Serial.printf(" U1: %f", robot.u1);
+    //Serial.printf(" U2: %f", robot.u2);
 
-    Serial1.write("b");
-    delay(2000);
-    Serial1.write("e");
-    delay(2000);
+    robot.calcMotorsVoltage();
+    setMotorsPWM(robot.u1, robot.u2);
+    //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
 
     //Serial.println();
   }
