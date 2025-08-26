@@ -36,7 +36,7 @@ void LFCDLaser::poll()
         start_count = 1;
       }
     } else if (start_count == 1) {
-      if (raw_bytes[start_count] >= 0xA0) {
+      if (raw_bytes[start_count] == 0xA0) {
         start_count = 0;
         
 
@@ -63,7 +63,7 @@ void LFCDLaser::poll()
         // read data in sets of 6
         
         for (uint16_t i = 0; i < raw_bytes.size(); i = i + 42) {
-          if (raw_bytes[i] == 0xFA /*&& raw_bytes[i + 1] == (0xA0 + i/42)*/) {
+          if (raw_bytes[i] == 0xFA && raw_bytes[i + 1] == (0xA0 + i/42)) {
             good_sets++;
             motor_speed += (raw_bytes[i + 3] << 8) + raw_bytes[i + 2];
             rpms = (raw_bytes[i + 3] << 8 | raw_bytes[i + 2]) / 10;
@@ -121,7 +121,7 @@ void LFCDLaser::poll()
 
         // scan->time_increment = motor_speed/good_sets/1e8;
       } else {
-        start_count = 0;
+        start_count = 1;
       }
     }
   }

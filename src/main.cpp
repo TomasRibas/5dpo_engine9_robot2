@@ -13,13 +13,20 @@
 TOF stof;
 
 // Create after optional Serial1 pin mapping, so use a pointer:
-lds::LFCDLaser* lidar = nullptr;
+//lds::LFCDLaser* lidar = nullptr;
 
 //void init_control(robot_t& robot);
 //void control(robot_t& robot);
 
 PID_pars_t wheel_PID_pars;
+////////////////////LIDAR///////////////////////
+#include "lds.h"
 
+
+
+#define DISTANCE_MAX    1000      // 100.0 cm 
+
+lds_scan_t lds_scan;
 
 /////////////////////////GCHANNELS///////////////////////////
 
@@ -167,9 +174,14 @@ void setup() {
   analogReadResolution(10);
 
   Serial.begin(115200);
+  Serial1.begin(230400);  // For LIDAR
   initializeMotors();
 
-  lidar = new lds::LFCDLaser(230400);  // ctor signature per new header :contentReference[oaicite:3]{index=3}
+  ldsInit(&lds_scan);
+
+  delay(100);
+  Serial1.print("b");
+  //lidar = new lds::LFCDLaser(230400);  // ctor signature per new header :contentReference[oaicite:3]{index=3}
 
   // Setup motor pin
   //analogWriteFreq(10000); // 10 kHz PWM
@@ -192,6 +204,7 @@ void setup() {
   SerialTiny.begin(); //leitura da tensão da bateria
 
   robot.control_mode = cm_pid;
+
 }
 
 uint8_t b;
@@ -209,17 +222,51 @@ void loop() {
       Serial.print("0x"); Serial.println(b, HEX);
     }
   }*/
-  lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
+  //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
+  if(Serial1.available() > 0)
+  {
+    if (ldsUpdate(&lds_scan, Serial1.read()) == true)
+    {
+      //drawPoint();
+      for (int i = 0; i < 360; i++) {
+    Serial.print(i);                          // angle index
+    Serial.print(" ");
+    Serial.print(lds_scan.data[i].range);     // distance
+    Serial.print(" ");
+    Serial.print(lds_scan.data[i].intensity); // intensity
+    Serial.print(" ");
+    Serial.println(lds_scan.scan_time);       // scan timestamp
+  }
 
-
+  //Optional: separator between scans
+  Serial.println("---ENDSCAN---");
+    }
+  }
+  
   currentMicros = micros();
   if(currentMicros - previousMicros >= interval){
     previousMicros = currentMicros;
 
     read_PIO_encoders();
+    //Serial.println(lds_scan.motor_speed);
     //stof.calculateTOF();
 
     robot.odometry();
+
+    
+  //   for (int i = 0; i < 360; i++) {
+  //   Serial.print(i);                          // angle index
+  //   Serial.print(" ");
+  //   Serial.print(lds_scan.data[i].range);     // distance
+  //   Serial.print(" ");
+  //   Serial.print(lds_scan.data[i].intensity); // intensity
+  //   Serial.print(" ");
+  //   Serial.println(lds_scan.scan_time);       // scan timestamp
+  // }
+
+  // Optional: separator between scans
+  // Serial.println("---ENDSCAN---");
+    
 
   /*if (robot.xe < 0.29){
       robot.v = 0.05;
