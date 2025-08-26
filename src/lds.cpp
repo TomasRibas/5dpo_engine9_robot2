@@ -47,7 +47,7 @@ bool ldsUpdate(lds_scan_t *p_scan, uint8_t data_in)
   bool ret = false;
 
   // time out : 1000ms
-  if (millis()-pre_time >= 2000)
+  if (millis()-pre_time >= 1000)
   {
     pre_time = millis();
     p_scan->state = LDS_PACKET_FIND_HEADER;
@@ -108,6 +108,13 @@ bool ldsUpdate(lds_scan_t *p_scan, uint8_t data_in)
           p_scan->data[index].intensity = (p_data[1]<<8) | p_data[0];
           p_scan->data[index].range     = (p_data[3]<<8) | p_data[2];
           p_scan->data[index].reserved  = (p_data[5]<<8) | p_data[4];
+          Serial.print(index);                          // angle index
+          Serial.print(" ");
+          Serial.print(p_scan->data[index].range);     // distance
+          Serial.print(" ");
+          Serial.print(p_scan->data[index].intensity); // intensity
+          Serial.println(" ");
+
         }
 
         if (p_scan->packet_index == 60-1)

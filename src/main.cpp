@@ -228,30 +228,21 @@ void loop() {
     if (ldsUpdate(&lds_scan, Serial1.read()) == true)
     {
       //drawPoint();
-      for (int i = 0; i < 360; i++) {
-    Serial.print(i);                          // angle index
-    Serial.print(" ");
-    Serial.print(lds_scan.data[i].range);     // distance
-    Serial.print(" ");
-    Serial.print(lds_scan.data[i].intensity); // intensity
-    Serial.print(" ");
-    Serial.println(lds_scan.scan_time);       // scan timestamp
-  }
-
-  //Optional: separator between scans
-  Serial.println("---ENDSCAN---");
     }
   }
+
+
+
   
-  currentMicros = micros();
-  if(currentMicros - previousMicros >= interval){
-    previousMicros = currentMicros;
+  // currentMicros = micros();
+  // if(currentMicros - previousMicros >= interval){
+  //   previousMicros = currentMicros;
 
-    read_PIO_encoders();
-    //Serial.println(lds_scan.motor_speed);
-    //stof.calculateTOF();
+  //   read_PIO_encoders();
+  //   //Serial.println(lds_scan.motor_speed);
+  //   //stof.calculateTOF();
 
-    robot.odometry();
+  //   robot.odometry();
 
     
   //   for (int i = 0; i < 360; i++) {
@@ -298,5 +289,5 @@ void loop() {
 
     //Serial.println();
   }
-}
+
 
