@@ -198,15 +198,15 @@ uint8_t b;
 
 void loop() {
   
-  if (SerialTiny.available()) { 
+  /*if (SerialTiny.available()) { 
     b = SerialTiny.read();  
     robot.battery_voltage = 1e-3 * ((b >> 1) * 50 + 4800);
-  }
+  }*/
 
   /*if (Serial1.available()) {
     int b = Serial1.read();
     if (b >= 0) {
-      Serial.print("0x"); Serial.print(b, HEX);
+      Serial.print("0x"); Serial.println(b, HEX);
     }
   }*/
   lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
@@ -245,8 +245,8 @@ void loop() {
     //Serial.printf(" U1: %f", robot.u1);
     //Serial.printf(" U2: %f", robot.u2);
 
-    robot.calcMotorsVoltage();
-    setMotorsPWM(robot.u1, robot.u2);
+    //robot.calcMotorsVoltage();
+    //setMotorsPWM(robot.u1, robot.u2);
     //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
 
     //Serial.println();

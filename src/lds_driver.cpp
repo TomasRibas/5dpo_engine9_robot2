@@ -6,7 +6,6 @@ namespace lds
 LFCDLaser::LFCDLaser(uint32_t baud_rate)
 {
   Serial1.begin(baud_rate); //set baud rate
-  
   // Below command is not required after firmware upgrade (2017.10)
   Serial1.write("b");  // start motor
 }
@@ -28,9 +27,8 @@ void LFCDLaser::poll()
   int index;
 
   //Serial.print("AAAAAAAAAAAAA");
-  while (!shutting_down_ && !got_scan) {
+  while (/*!shutting_down_ && !got_scan*/got_scan==false && shutting_down_==false) {
     // Wait until first data sync of frame: 0xFA, 0xA0
-    
     raw_bytes[start_count] = Serial1.read();  
 
     if (start_count == 0) {
@@ -38,16 +36,18 @@ void LFCDLaser::poll()
         start_count = 1;
       }
     } else if (start_count == 1) {
-      if (raw_bytes[start_count] == 0xA0) {
+      if (raw_bytes[start_count] >= 0xA0) {
         start_count = 0;
+        
 
         // Now that entire start sequence has been found, read in the rest of the message
         got_scan = true;
-        uint8_t bytes_read = 0;
+        uint16_t bytes_read = 0;
         while (bytes_read < 2518 && !shutting_down_) {
           if (Serial1.available()) {
             raw_bytes[2 + bytes_read] = Serial1.read();
             bytes_read++;
+            //Serial.println(bytes_read);
           }
         }
 
@@ -63,7 +63,7 @@ void LFCDLaser::poll()
         // read data in sets of 6
         
         for (uint16_t i = 0; i < raw_bytes.size(); i = i + 42) {
-          if (raw_bytes[i] == 0xFA && raw_bytes[i + 1] == (0xA0 + i / 42)) {
+          if (raw_bytes[i] == 0xFA /*&& raw_bytes[i + 1] == (0xA0 + i/42)*/) {
             good_sets++;
             motor_speed += (raw_bytes[i + 3] << 8) + raw_bytes[i + 2];
             rpms = (raw_bytes[i + 3] << 8 | raw_bytes[i + 2]) / 10;
@@ -71,7 +71,18 @@ void LFCDLaser::poll()
             for (uint16_t j = i + 4; j < i + 40; j = j + 6) {
               index = 6 * (i / 42) + (j - 4 - i) / 6;
 
-              // Four bytes per reading
+              // uint8_t b0 = raw_bytes[j];     // distance LSB
+              // uint8_t b1 = raw_bytes[j + 1]; // distance MSB
+              // uint8_t b2 = raw_bytes[j + 2]; // intensity LSB
+              // uint8_t b3 = raw_bytes[j + 3]; // intensity MSB
+              // uint8_t b4 = raw_bytes[j + 4]; // reserved / flags
+              // uint8_t b5 = raw_bytes[j + 5]; // reserved / flags
+
+              // uint16_t range = (b1 << 8) | b0;
+              // uint16_t intensity = (b3 << 8) | b2;
+              // b4/b5 → you can use for flags or ignore
+
+              //Four bytes per reading
               uint8_t byte0 = raw_bytes[j];
               uint8_t byte1 = raw_bytes[j + 1];
               uint8_t byte2 = raw_bytes[j + 2];
@@ -114,9 +125,8 @@ void LFCDLaser::poll()
       }
     }
   }
+} // namespace lds
 }
-}  // namespace lds
-
 // int main(int argc, char ** argv)
 // {
 //   std::string port;

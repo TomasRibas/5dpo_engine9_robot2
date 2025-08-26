@@ -35,7 +35,7 @@ public:
   * @brief Close the driver down and prevent the polling loop from advancing
   */
 
-  void close() {shutting_down_ = true;}
+  void close() { shutting_down_ = true; };
 
 
 private:
@@ -44,7 +44,7 @@ private:
   // @brief The baud rate for the serial connection
   uint32_t baud_rate_;
   // @brief Flag for whether the driver is supposed to be shutting down or not
-  bool shutting_down_;
+  bool shutting_down_=false;
   // @brief Actual serial port object for reading/writing to the LFCD Laser Scanner
   //boost::asio::serial_port serial_;
   // @brief current motor speed as reported by the LFCD.
