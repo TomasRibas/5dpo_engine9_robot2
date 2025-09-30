@@ -1,4 +1,7 @@
 #include <Arduino.h>
+
+#include <WiFi.h>
+
 #include <RPi_Pico_TimerInterrupt.h>
 #include <Wire.h>
 #include "TOF.h"
@@ -7,10 +10,11 @@
 
 #include "lds_driver.hpp"
 
-
-#include "gchannels.h"
-
 TOF stof;
+
+unsigned long interval;
+unsigned long currentMicros, previousMicros;
+char received;
 
 // Create after optional Serial1 pin mapping, so use a pointer:
 //lds::LFCDLaser* lidar = nullptr;
@@ -30,9 +34,154 @@ lds_scan_t lds_scan;
 
 /////////////////////////GCHANNELS///////////////////////////
 
+#include "gchannels.h"
+#include "file_gchannels.h"
+
+#include <WiFiUdp.h>
+#include <LittleFS.h>
+#include "http_ota.h"
+
+
+#define max_wifi_str 32
+
+char ssid[max_wifi_str];
+char password[max_wifi_str];
+
+const char* fname_wifi = "/wifi.txt";
+
+int udp_on, ip_on;
+
+WiFiUDP Udp;
+unsigned int localUdpPort = 4224;  // local port to listen on
+
+#define UDP_MAX_SIZE 512
+uint8_t UdpInPacket[UDP_MAX_SIZE];  // buffer for incoming packets
+uint8_t UdpOutPacket[UDP_MAX_SIZE];  // buffer for outgoing packets
+int UdpBufferSize = UDP_MAX_SIZE;
+
+
+
+gchannels_t udp_commands;
 gchannels_t serial_commands;
-gchannels_t comRobot_commands;
 commands_list_t pars_list;
+
+const char *pars_fname = "pars.cfg";
+bool load_pars_requested = false ;
+
+void set_interval(float new_interval)
+{
+  interval = new_interval * 1000000L;   // In microseconds
+  robot.dt = new_interval;   // In seconds
+  wheel_PID_pars.dt = robot.dt;  
+}
+
+void process_command(command_frame_t frame)
+{
+  pars_list.process_read_command(frame);
+
+  if (frame.command_is("mo")) { // The 'mo'de command ...
+    robot.control_mode = (control_mode_t) frame.value;
+
+  } else if (frame.command_is("u1")) { // The 'u1' command sets the voltage for motor 1
+    robot.u1_req = frame.value;
+
+  } else if (frame.command_is("u2")) { // The 'u2' command sets the voltage for motor 1
+    robot.u2_req = frame.value;
+
+  } else if (frame.command_is("w1")) { 
+    robot.w1_req = frame.value;
+
+  } else if (frame.command_is("w2")) {
+    robot.w2_req = frame.value;
+
+  } else if (frame.command_is("dt")) { 
+     set_interval(frame.value);
+
+  } else if (frame.command_is("v")) { 
+    robot.v_req = frame.value;    
+
+  } else if (frame.command_is("w")) { 
+    robot.w_req = frame.value;    
+
+  } else if (frame.command_is("sl")) { 
+    robot.solenoid_PWM = frame.value;    
+
+  } else if (frame.command_is("xr")) { 
+    robot.xe = frame.value;    
+
+  } else if (frame.command_is("yr")) { 
+    robot.ye = frame.value;    
+
+  } else if (frame.command_is("tr")) { 
+    robot.thetae = frame.value;    
+
+  } else if (frame.command_is("xt")) { 
+    traj.xt = frame.value;    
+
+  } else if (frame.command_is("yt")) { 
+    traj.yt = frame.value;    
+
+  } else if (frame.command_is("pl")) { 
+    //load_commands(pars_fname, serial_commands);
+    load_pars_requested = true;
+
+  } else if (frame.command_is("ps")) {  
+    save_commands(pars_fname, pars_list, serial_commands);
+   
+  } else if (frame.command_is("ssid")) { 
+    strncpy(ssid, frame.text, max_wifi_str - 1);
+    ssid[max_wifi_str - 1] = 0;
+  
+  } else if (frame.command_is("pass")) { 
+    if (strlen(frame.text) < 8) return;
+    strncpy(password, frame.text, max_wifi_str - 1);
+    password[max_wifi_str - 1] = 0;    
+    
+  } else if (frame.command_is("wifi")) { 
+    if (frame.value == 1) {
+      if (WiFi.connected()) WiFi.end();
+      WiFi.begin(ssid, password); 
+    } else if (frame.value == 0) {
+      WiFi.end();
+    }
+
+  } else if (frame.command_is("httpota")) { 
+    if (WiFi.connected()) {
+      http_ota.host = frame.text;
+      http_ota.uri = "/picoRobot/firmware.bin"; 
+      http_ota.requested = true;
+    }
+
+  } 
+}
+
+void send_file(const char* filename, int log_high)
+{
+  File f;
+  f = LittleFS.open(filename, "r");
+  if (!f) {
+    serial_commands.send_command("err", filename);
+    return;
+  }
+
+  serial_commands.flush();
+  Serial.flush();
+
+  int c;
+  byte b, mask;
+  if (log_high) mask = 0x80;
+  else mask = 0;
+
+  while(1) {
+    c = f.read(&b, 1);
+    if (c != 1) break;
+    serial_commands.send_char(b | mask);
+  }
+  f.close();
+
+  serial_commands.flush();
+  Serial.flush();  
+}
 
 int analogWriteBits = 10; 
 int analogWriteMax = (1 << analogWriteBits) - 1; 
@@ -131,17 +280,6 @@ void setMotorsPWM(float u1, float u2)
 
 }
 
-unsigned long interval;
-unsigned long currentMicros, previousMicros;
-char received;
-
-void set_interval(float new_interval)
-{
-  interval = new_interval * 1000000L;   // In microseconds
-  robot.dt = new_interval;   // In seconds
-  wheel_PID_pars.dt = robot.dt;  
-}
-
 void printEncoders()
 {
   Serial.print("Encoder Left:");
@@ -166,6 +304,16 @@ void printTof()
   Serial.print(stof.distance_tof);
 }
 
+void serial_write(const char *buffer, size_t size)
+{
+  Serial.write(buffer, size);
+  if (udp_on) {
+    Udp.beginPacket(Udp.remoteIP(), Udp.remotePort());
+    Udp.write(buffer, size);
+    //Serial.print("Sent="); Serial.println(Udp.endPacket());
+    Udp.endPacket();  
+  } 
+}
 
 void setup() {
 
@@ -173,13 +321,92 @@ void setup() {
 
   analogReadResolution(10);
 
+  pars_list.register_command("kf", &(wheel_PID_pars.Kf));
+  pars_list.register_command("kc", &(wheel_PID_pars.Kc));
+  pars_list.register_command("ki", &(wheel_PID_pars.Ki));
+  pars_list.register_command("kd", &(wheel_PID_pars.Kd));
+  pars_list.register_command("kfd", &(wheel_PID_pars.Kfd));
+  pars_list.register_command("dz", &(wheel_PID_pars.dead_zone));
+
+  pars_list.register_command("at", &(traj.thetat));
+  pars_list.register_command("xt", &(traj.xt));
+  pars_list.register_command("yt", &(traj.yt));
+
+  pars_list.register_command("xi", &(traj.xi));
+  pars_list.register_command("yi", &(traj.yi));
+
+  pars_list.register_command("cx", &(traj.cx));
+  pars_list.register_command("cy", &(traj.cy));
+
+  pars_list.register_command("fv", &(robot.follow_v));
+  pars_list.register_command("fk", &(robot.follow_k));
+
+  //pars_list.register_command("fk", &(robot.i_lambda));
+  pars_list.register_command("kt", &(traj.ktheta));
+  //pars_list.register_command("ssid", ssid, max_wifi_str);
+  //pars_list.register_command("pass", password, max_wifi_str);
+
+  udp_commands.init(process_command, serial_write);
+  
+  serial_commands.init(process_command, serial_write);
+
+  
+
   Serial.begin(115200);
   Serial1.begin(230400);  // For LIDAR
+
+  LittleFS.begin();
+  
+  float control_interval = 0.04;  // In seconds
+
+
+  // All wheeel PID controllers share the same parameters
+  wheel_PID_pars.Kf = 0.3;
+  wheel_PID_pars.Kc = 0.15;
+  wheel_PID_pars.Ki = 1;
+  wheel_PID_pars.Kd = 0.5;
+  wheel_PID_pars.Kfd = 0;
+  wheel_PID_pars.dt = control_interval;
+  wheel_PID_pars.dead_zone = 0;
+  int i;
+  for (i = 0; i < NUM_WHEELS; i++) {
+    robot.PID[i].init_pars(&wheel_PID_pars);
+  }
+
+  strcpy(ssid, "5DPO-NETWORK");
+  strcpy(password, "5dpo5dpo");
+
+  load_commands(pars_fname, serial_commands);
+
+  // Operate in WiFi Station mode
+  WiFi.mode(WIFI_STA);
+ 
+  // Start WiFi with supplied parameters
+  WiFi.begin(ssid, password);
+
+  // Wait until connected or timeout
+  Serial.print("Connecting to WiFi");
+  unsigned long startAttemptTime = millis();
+
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 20000) {
+    Serial.print(".");
+    delay(500);
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println();
+    Serial.print("Connected! IP address: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println();
+    Serial.println("Failed to connect to WiFi.");
+  }
+
   initializeMotors();
 
   ldsInit(&lds_scan);
 
-  delay(100);
+  //delay(100);
   Serial1.print("b");
   //lidar = new lds::LFCDLaser(230400);  // ctor signature per new header :contentReference[oaicite:3]{index=3}
 
@@ -223,26 +450,56 @@ void loop() {
     }
   }*/
   //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
-  if(Serial1.available() > 0)
+  /*if(Serial1.available() > 0)
   {
     if (ldsUpdate(&lds_scan, Serial1.read()) == true)
     {
       //drawPoint();
     }
+  }*/
+
+  if (WiFi.connected() && !ip_on){
+    // Connection established
+    serial_commands.send_command("msg", (String("Pico W is connected to WiFi network with SSID ") + WiFi.SSID()).c_str());
+ 
+    // Print IP Address
+    ip_on = Udp.begin(localUdpPort);
+    Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localUdpPort);
   }
 
+  if (ip_on) {
+    //ArduinoOTA.handle();
 
+    int packetSize = Udp.parsePacket();
+    if (packetSize) {
+      int i;
+      udp_on = 1;
+      // receive incoming UDP packets
+
+      //Serial.printf("Received %d bytes from %s, port %d\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());
+      int len = Udp.read(UdpInPacket, UdpBufferSize - 1);
+      if (len > 0) {
+        UdpInPacket[len] = 0;
+      }
+      //Serial.printf("UDP packet contents (as string): %s\n", UdpInPacket);
+
+      for (i = 0; i < len; i++) {
+        udp_commands.process_char(UdpInPacket[i]);
+        //Serial.write(UdpInPacket[i]);
+      }
+    }      
+  }
 
   
-  // currentMicros = micros();
-  // if(currentMicros - previousMicros >= interval){
-  //   previousMicros = currentMicros;
+  currentMicros = micros();
+  if(currentMicros - previousMicros >= interval){
+     previousMicros = currentMicros;
 
-  //   read_PIO_encoders();
-  //   //Serial.println(lds_scan.motor_speed);
-  //   //stof.calculateTOF();
+     read_PIO_encoders();
+     //Serial.println(lds_scan.motor_speed);
+     stof.calculateTOF();
 
-  //   robot.odometry();
+     robot.odometry();
 
     
   //   for (int i = 0; i < 360; i++) {
@@ -278,6 +535,7 @@ void loop() {
 
     //printEncoders();
     //printOdometry();
+    
     //printTof();
     //Serial.printf(" rel_s: %f", robot.rel_s);
     //Serial.printf(" U1: %f", robot.u1);
@@ -287,7 +545,52 @@ void loop() {
     //setMotorsPWM(robot.u1, robot.u2);
     //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
 
-    //Serial.println();
+    // Debug information
+    serial_commands.send_command("u1", robot.u1);
+    serial_commands.send_command("u2", robot.u2);
+
+    serial_commands.send_command("e1", robot.enc1);
+    serial_commands.send_command("e2", robot.enc2);
+
+    serial_commands.send_command("Vbat", robot.battery_voltage);
+
+    serial_commands.send_command("ve", robot.ve);
+    serial_commands.send_command("we", robot.we);
+
+    serial_commands.send_command("w1", robot.w1e);
+    serial_commands.send_command("w2", robot.w2e);
+
+    serial_commands.send_command("sl", robot.solenoid_PWM);
+
+    serial_commands.send_command("is", robot.i_sense);
+    serial_commands.send_command("us", robot.u_sense);
+
+    serial_commands.send_command("mode", robot.control_mode);
+
+    serial_commands.send_command("IP", WiFi.localIP().toString().c_str());
+
+    serial_commands.send_command("m1", robot.PWM_1);
+    serial_commands.send_command("m2", robot.PWM_2);
+
+    serial_commands.send_command("xe", robot.xe);
+    serial_commands.send_command("ye", robot.ye);
+    serial_commands.send_command("te", robot.thetae);
+
+    pars_list.send_sparse_commands(serial_commands);
+
+    Serial.print(" cmd: ");
+    Serial.print(serial_commands.frame.command);
+    Serial.print("; ");
+      
+    //debug = serial_commands.out_count;
+    serial_commands.send_command("dbg", 5); 
+    serial_commands.send_command("loop", micros() - interval);  
+     
+    serial_commands.flush();   
+    Serial.println();
+
+    http_ota.handle();
   }
+}
 
 
