@@ -32,6 +32,12 @@ PID_pars_t wheel_PID_pars;
 
 lds_scan_t lds_scan;
 
+//////////////////EKF/////////////////////////////
+#include "utils.h"
+#include "ekf.h"
+
+EKF ekf;
+
 /////////////////////////GCHANNELS///////////////////////////
 
 #include "gchannels.h"
@@ -501,19 +507,37 @@ void loop() {
 
      robot.odometry();
 
-    
-  //   for (int i = 0; i < 360; i++) {
-  //   Serial.print(i);                          // angle index
-  //   Serial.print(" ");
-  //   Serial.print(lds_scan.data[i].range);     // distance
-  //   Serial.print(" ");
-  //   Serial.print(lds_scan.data[i].intensity); // intensity
-  //   Serial.print(" ");
-  //   Serial.println(lds_scan.scan_time);       // scan timestamp
-  // }
+     if(Serial1.available() > 0)
+    {
+      if (ldsUpdate(&lds_scan, Serial1.read()) == true)
+      {
+        if(lds_scan.data[359].range > 0){//only if data valid{
+        
+          for(int i=0; i<360; i++){ //full Scan
+            ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001; //in meters
+            // Serial.print(i); Serial.print(" "); 
+            // Serial.print(ekf.LaserValues(0,i)); Serial.println(" ");  
+          } 
+        }
+      }
+    }
 
-  // Optional: separator between scans
-  // Serial.println("---ENDSCAN---");
+    //unsigned long computeEKF = millis();
+
+    // ekf.predict(robot.ve, robot.thetae, ekf.dt); //robot.dt??
+    ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
+
+    ekf.phaseAV();
+    for(int i=0; i<360; i++){ //full Scan
+      ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001; //in meters
+      Serial.print(i); Serial.print(" "); 
+      Serial.print(ekf.LaserValues(0,i)); Serial.println(" ");  
+    } 
+
+    
+
+
+
     
 
   /*if (robot.xe < 0.29){
