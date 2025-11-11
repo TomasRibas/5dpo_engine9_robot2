@@ -18,7 +18,7 @@
 #define sensD_stddev 0.005
 #define sensA_stddev 0.009 //radians
 
-#define deltaRay 5
+#define deltaRay 8
 
 #define NStates 3 // x, y, theta
 #define NObs 2 // range, angle
@@ -84,7 +84,7 @@ class EKF {
 
         BLA::Matrix<3, 3, double> I; //identity matrix
 
-        BLA::Matrix<NStates, 1, double> XR; //state
+        BLA::Matrix<NStates, 1, double> XR, XRe; //state
         BLA::Matrix<NStates, NStates, double> P; //covariance
         BLA::Matrix<NObs, NObs, double> Q; //process noise
         BLA::Matrix<NObs, NObs, double> R; //observation noise
@@ -93,6 +93,7 @@ class EKF {
         BLA::Matrix<NObs, NStates, double> grad_h_X; //grad h(X)
         BLA::Matrix<NStates, NObs, double> K; //Kalman gain
         BLA::Matrix<NObs, 1, double> Z, Z_E;
+        BLA::Matrix<NObs, NObs, double> S;
 
         //need access to full LIDAR scan
         BLA::Matrix<1, 360, double> LaserValues; //LIDAR measurements [range, angle]'

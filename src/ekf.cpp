@@ -33,15 +33,25 @@ EKF::EKF(){
     R(1, 1) = pow(0.1, 2); //measurement noise angle
 
     //set Beacon positions
-    BeaconPos[0].x = 0.0; BeaconPos[0].y = 0.0;
-    BeaconPos[1].x = 1.0; BeaconPos[1].y = -1.0;
-    BeaconPos[2].x = -1.0; BeaconPos[2].y = -1.0;
-    BeaconPos[3].x = -1.0; BeaconPos[3].y = 1.0;
+    BeaconPos[0].x = 0; BeaconPos[0].y = 0;
+    BeaconPos[1].x = 0; BeaconPos[1].y = 1.27;
+    BeaconPos[2].x = 1.78; BeaconPos[2].y = 1.27;
+    BeaconPos[3].x = 1.78; BeaconPos[3].y = 0;
+
+    //init BeaconCluster
+    for(int j=0; j<NBEACONS; j++){
+        BeaconCluster[j].x = 0;
+        BeaconCluster[j].y = 0;
+        BeaconCluster[j].n = 0;
+        BeaconCluster[j].dist = 0;
+        BeaconCluster[j].angle = 0;
+        BeaconCluster[j].firstRay = 0;
+    }
 
     //set initial state
-    XR(0) = 0.0;
-    XR(1) = 0.0;
-    XR(2) = 0.0;
+    XR(0) = 0.2;
+    XR(1) = 0.095;
+    XR(2) = 1.57;
 
     //set df//dX
     grad_f_X.Fill(0.0);
@@ -78,13 +88,13 @@ void EKF::predict(double vlin, double omega, double dt){
 
 void EKF::updateXR(double vlin, double omega, double dt){
     //Update XR, motion model
-    XR(0) = XR(0) + vlin * dt * cos(XR(2) + 0.5*omega*dt);
+    XR(0) = XR(0) + vlin * dt * cos(XR(2) + 0.5*omega*dt); //inverted
     XR(1) = XR(1) + vlin * dt * sin(XR(2) + 0.5*omega*dt);
     XR(2) = normalizeAngle(XR(2) + omega * dt);
 };
 void EKF::updateJacState(double vlin, double omega, double dt){
-    grad_f_X(0, 3) = -vlin * dt * sin(XR(2) + ((omega * dt )/ 2));
-    grad_f_X(1, 3) =  vlin * dt * cos(XR(2) + ((omega * dt )/ 2));
+    grad_f_X(0, 2) = -vlin * dt * sin(XR(2) + ((omega * dt )/ 2));
+    grad_f_X(1, 2) =  vlin * dt * cos(XR(2) + ((omega * dt )/ 2));
 };
 void EKF::updateJacInput(double vlin, double omega, double dt){
     grad_f_q(0, 0) = cos(XR(2) + 0.5*omega*dt);
@@ -110,10 +120,16 @@ void EKF::updateEKF(int nBeacon){
     double dBeacon;
     dBeacon = dist(BeaconPos[nBeacon].x - XR(0), 
                     BeaconPos[nBeacon].y - XR(1));
-
-    Z_E(0) = BeaconCluster[nBeacon].dist - dBeacon; //expected distance to beacon
-    Z_E(1) = normalizeAngle(BeaconCluster[nBeacon].angle - 
-        normalizeAngle(atan2(BeaconPos[nBeacon].y - XR(1), BeaconPos[nBeacon].x - XR(0)) - XR(2))); //expected angle to beacon
+    //BeaconCluster[nBeacon].dist
+    Z_E(0) = Z(0) - dBeacon; //expected distance to beacon Z(0) - dbeacon
+    Z_E(1) = normalizeAngle(Z(1) - 
+        normalizeAngle(atan2(BeaconPos[nBeacon].y - XR(1), BeaconPos[nBeacon].x - XR(0)) - XR(2))); 
+    Serial.print(" Ze_Dist: "); Serial.print(Z_E(0));
+    Serial.print("  Ze_Angle: "); Serial.println((Z_E(1)*180)/PI);
+      
+    //normalizeAngle(BeaconCluster[nBeacon].angle - 
+        //normalizeAngle(atan2(BeaconPos[nBeacon].y - XR(1), BeaconPos[nBeacon].x - XR(0)) - XR(2))); //expected angle to beacon
+        //Z(1) - (atan2(...) - XR(2))
     
     //expected measurement Z_E
     //XR=XR+K(Z-Z_E)
@@ -137,7 +153,6 @@ void EKF::updateEKF(int nBeacon){
 
     // XR = XR + K * (Z_E);
     //Update x,y,theta with odom
-    Matrix<NObs, NObs, double> S;
     S = grad_h_X * P * (~grad_h_X) + R;
     
     // Invert innovation covariance
@@ -149,35 +164,49 @@ void EKF::updateEKF(int nBeacon){
     //P covariance update
     P = (I - K * grad_h_X) * P;
 
+
     XR = XR + K * (Z_E);
+    //normalizeAngle(XR(2));
 };
 
 
 void EKF::phaseAV(){
     //Association and validation
     for(int j=0; j < NBEACONS; j++){
-        BeaconCluster[j].x = 0;
-        BeaconCluster[j].y = 0;
+        // BeaconCluster[j].x = 0;
+        // BeaconCluster[j].y = 0;
         BeaconCluster[j].n = 0;
-        idx_beacon = round((normalizeAngle(atan2(BeaconPos[j].y - XR(1) + 0.085*sin(XR(2)), 
-                BeaconPos[j].x - XR(0) + 0.085*cos(XR(2))) - XR(2)) + M_PI)
+        idx_beacon = round((normalizeAngle(atan2(BeaconPos[j].y - XR(1) - 0.07*sin(XR(2)), 
+                BeaconPos[j].x - XR(0) - 0.07*cos(XR(2))) - XR(2)))
                     /(M_PI/180)); //angle to beacon in robot frame
                     //might not need + M_PI
         BeaconCluster[j].firstRay = idx_beacon - deltaRay;
         if(BeaconCluster[j].firstRay < 0) BeaconCluster[j].firstRay += 360;
+        //if(BeaconCluster[j].firstRay > 360) BeaconCluster[j].firstRay -= 360;
 
         for(int i = 0; i < 2*deltaRay; i++){
             idx = BeaconCluster[j].firstRay + i; //doesn't need -1??
             if(idx >= 360) idx -= 360;
             //has to have access to full LIDAR scan
             MeasureDist = LaserValues(0, idx); //get LIDAR measurement
+            Serial.print("First Ray: "); Serial.print(BeaconCluster[j].firstRay);
+            Serial.print(" LIDAR idx: "); Serial.print(idx);
+            Serial.print(" Dist: "); Serial.println(MeasureDist);
             if(MeasureDist > 0){
-                MeasurePos.x = MeasureDist*cos((idx - 180)*M_PI/180 +  XR(2)) + XR(0) - 0.085*cos(XR(2));
-                MeasurePos.y = MeasureDist*sin((idx - 180)*M_PI/180 +  XR(2)) + XR(1) - 0.085*sin(XR(2));
+                MeasurePos.x = MeasureDist*cos((idx)*M_PI/180 +  XR(2)) + XR(0) + 0.07*cos(XR(2) );//was -0.085
+                MeasurePos.y = MeasureDist*sin((idx)*M_PI/180 +  XR(2)) + XR(1) + 0.07*sin(XR(2) );//was -0.085
+                float d = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
+                Serial.print("Threshold Distance: "); Serial.println(d);
                 if(dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y) < 0.1){ //Adjust threshold
+                    Serial.print(" Dist_X: "); Serial.println(MeasurePos.x);
+                    Serial.print(" Dist_Y: "); Serial.println(MeasurePos.y);
                     BeaconCluster[j].n++;
                     BeaconCluster[j].x = ((BeaconCluster[j].x * (BeaconCluster[j].n - 1)) + MeasurePos.x) / BeaconCluster[j].n; //update mean
                     BeaconCluster[j].y = ((BeaconCluster[j].y * (BeaconCluster[j].n - 1)) + MeasurePos.y) / BeaconCluster[j].n; //update mean
+                    Serial.print("BeaconCluster_N: "); Serial.println(BeaconCluster[j].n);
+                    Serial.print("BeaconCluster_X: "); Serial.println(BeaconCluster[j].x);
+                    Serial.print("BeaconCluster_Y: "); Serial.println(BeaconCluster[j].y);
+                    
                 }
             }
         }
@@ -186,13 +215,16 @@ void EKF::phaseAV(){
                                             BeaconCluster[j].y - XR(1));
         BeaconCluster[j].angle = normalizeAngle(atan2(BeaconCluster[j].y - XR(1),
                                             BeaconCluster[j].x - XR(0)) - XR(2));
+        //BeaconCluster[j].angle = (BeaconCluster[j].angle * 180 / M_PI); //in degrees
     }
 };
 
 void EKF::motionmodelEKF(){
     for(int j=0; j<NBEACONS; j++){
         if(BeaconCluster[j].n > 0){
+            //predict(vlin, omega, dt);
             updateEKF(j);
         }
     }
+    
 };

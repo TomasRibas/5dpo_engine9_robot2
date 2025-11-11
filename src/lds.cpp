@@ -6,10 +6,6 @@
 #define LDS_PACKET_PARSING          1
 
 
-
-
-
-
 void ldsInit(lds_scan_t *p_scan)
 {
   uint32_t i;
@@ -108,12 +104,13 @@ bool ldsUpdate(lds_scan_t *p_scan, uint8_t data_in)
           p_scan->data[index].intensity = (p_data[1]<<8) | p_data[0];
           p_scan->data[index].range     = (p_data[3]<<8) | p_data[2];
           p_scan->data[index].reserved  = (p_data[5]<<8) | p_data[4];
-          Serial.print(index);                          // angle index
-          Serial.print(" ");
-          Serial.print(p_scan->data[index].range);     // distance
-          Serial.print(" ");
-          Serial.print(p_scan->data[index].intensity); // intensity
-          Serial.println(" ");
+          
+          // Serial.print(index);                          // angle index
+          // Serial.print(" ");
+          // Serial.print(p_scan->data[index].range);     // distance
+          // Serial.print(" ");
+          // Serial.print(p_scan->data[index].intensity); // intensity
+          // Serial.println();
 
         }
 

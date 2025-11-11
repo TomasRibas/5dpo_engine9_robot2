@@ -323,7 +323,7 @@ void serial_write(const char *buffer, size_t size)
 
 void setup() {
 
-  interval = 40 * 1000;
+  interval = 60 * 1000;
 
   analogReadResolution(10);
 
@@ -413,7 +413,7 @@ void setup() {
   ldsInit(&lds_scan);
 
   //delay(100);
-  Serial1.print("b");
+  //Serial1.print("b");
   //lidar = new lds::LFCDLaser(230400);  // ctor signature per new header :contentReference[oaicite:3]{index=3}
 
   // Setup motor pin
@@ -496,6 +496,18 @@ void loop() {
     }      
   }
 
+  if(Serial1.available() > 0)
+    {
+      if (ldsUpdate(&lds_scan, Serial1.read())) {
+      // Complete scan received
+      // Now you can safely print or process the full scan
+      
+      // Optional: Print complete scan data here instead
+        for(int i=0; i<360; i++) {
+          ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001; //in meters
+        }
+      
+    
   
   currentMicros = micros();
   if(currentMicros - previousMicros >= interval){
@@ -505,34 +517,110 @@ void loop() {
      //Serial.println(lds_scan.motor_speed);
      stof.calculateTOF();
 
-     robot.odometry();
+     //robot.odometry();
 
-     if(Serial1.available() > 0)
-    {
-      if (ldsUpdate(&lds_scan, Serial1.read()) == true)
-      {
-        if(lds_scan.data[359].range > 0){//only if data valid{
-        
-          for(int i=0; i<360; i++){ //full Scan
-            ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001; //in meters
-            // Serial.print(i); Serial.print(" "); 
-            // Serial.print(ekf.LaserValues(0,i)); Serial.println(" ");  
-          } 
-        }
-      }
-    }
+    //  if(Serial1.available() > 0)
+    // {
+    //   if (ldsUpdate(&lds_scan, Serial1.read())) {
+    //   // Complete scan received
+    //   // Now you can safely print or process the full scan
+      
+    //   // Optional: Print complete scan data here instead
+    //   for(int i=0; i<360; i++) {
+    //     ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001; //in meters
+    //     // Serial.print(i); Serial.print(" "); 
+    //     // Serial.print(ekf.LaserValues(0,i)); Serial.println(" ");
+    //   }
+      
+      robot.odometry(); 
+      //ekf.predict(robot.ve, robot.we, robot.dt); //robot.dt??
+      ekf.phaseAV();
+          //BEACON CLUSTERS 0-3
+      serial_commands.send_command("Bx0", ekf.BeaconCluster[0].x);
+      serial_commands.send_command("By0", ekf.BeaconCluster[0].y);
+      serial_commands.send_command("Bd0", ekf.BeaconCluster[0].dist);
+      serial_commands.send_command("Bt0", ekf.BeaconCluster[0].angle);
 
-    //unsigned long computeEKF = millis();
+      serial_commands.send_command("Bx1", ekf.BeaconCluster[1].x);
+      serial_commands.send_command("By1", ekf.BeaconCluster[1].y);
+      serial_commands.send_command("Bd1", ekf.BeaconCluster[1].dist);
+      serial_commands.send_command("Bt1", ekf.BeaconCluster[1].angle);
 
-    // ekf.predict(robot.ve, robot.thetae, ekf.dt); //robot.dt??
-    ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
+      serial_commands.send_command("Bx2", ekf.BeaconCluster[2].x);
+      serial_commands.send_command("By2", ekf.BeaconCluster[2].y);
+      serial_commands.send_command("Bd2", ekf.BeaconCluster[2].dist);
+      serial_commands.send_command("Bt2", ekf.BeaconCluster[2].angle);
 
-    ekf.phaseAV();
-    for(int i=0; i<360; i++){ //full Scan
-      ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001; //in meters
-      Serial.print(i); Serial.print(" "); 
-      Serial.print(ekf.LaserValues(0,i)); Serial.println(" ");  
-    } 
+      serial_commands.send_command("Bx3", ekf.BeaconCluster[3].x);
+      serial_commands.send_command("By3", ekf.BeaconCluster[3].y);
+      serial_commands.send_command("Bd3", ekf.BeaconCluster[3].dist);
+      serial_commands.send_command("Bt3", ekf.BeaconCluster[3].angle);
+      
+      for(int j=0; j<NBEACONS; j++){
+        Serial.print(" Beacon "); Serial.print(j);
+        Serial.print(" X: "); Serial.print(ekf.BeaconCluster[j].x);
+        Serial.print(" Y: "); Serial.print(ekf.BeaconCluster[j].y);
+        Serial.print(" Dist: "); Serial.print(ekf.BeaconCluster[j].dist);
+        Serial.print(" Angle: "); Serial.println(ekf.BeaconCluster[j].angle * 180 / M_PI);
+      } 
+
+      
+      ekf.predict(robot.ve, robot.we, robot.dt);
+      //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
+      ekf.motionmodelEKF();
+      
+      //for(int j=0; j<NBEACONS; j++){
+        //if(ekf.BeaconCluster[j].n > 0){
+            //predict(vlin, omega, dt);
+            // ekf.updateEKF(j);
+            // Serial.print(" Ze_Dist: "); Serial.print(ekf.Z_E(0));
+            // Serial.print("  Ze_Angle: "); Serial.println((ekf.Z_E(1)*180)/PI);
+            
+            // Serial.print("  Xst: "); Serial.print(ekf.XR(0));
+            // Serial.print("  Xekf: "); Serial.println(ekf.XRe(0));
+            
+            // Serial.print("  Yst: "); Serial.print(ekf.XR(1));
+            // Serial.print("  Yekf: "); Serial.println(ekf.XRe(1));
+            
+            // Serial.print("  Thetast: "); Serial.print((ekf.XR(2)*180)/PI);
+            // Serial.print("  Thetaekf: "); Serial.println((ekf.XRe(2)*180)/PI);
+        //}
+      //}
+      
+
+      
+
+      // Serial.print(" Ze_Dist: "); Serial.print(ekf.Z_E(0));
+      // Serial.print("  Ze_Angle: "); Serial.println((ekf.Z_E(1)*180)/PI);
+      // Serial.println("Kalman Gain: ");
+      // for(int r=0; r<NStates; r++){
+      //     for(int c=0; c<NObs; c++)
+      //     {
+      //         Serial.print(ekf.K(r,c)); Serial.print(" ");
+      //     }
+      //     Serial.println();
+      // }
+      // Serial.print("XOdom: "); Serial.print(robot.xe);
+      // Serial.print("  Xst: "); Serial.print(ekf.XR(0));
+      // Serial.print("  Xekf: "); Serial.println(ekf.XRe(0));
+      // Serial.print("YOdom: "); Serial.print(robot.ye);
+      // Serial.print("  Yst: "); Serial.print(ekf.XR(1));
+      // Serial.print("  Yekf: "); Serial.println(ekf.XRe(1));
+      // Serial.print("ThetaOdom: "); Serial.print((robot.thetae*180)/PI);
+      // Serial.print("  Thetast: "); Serial.print((ekf.XR(2)*180)/PI);
+      // Serial.print("  Thetaekf: "); Serial.println((ekf.XRe(2)*180)/PI);
+  
+
+    serial_commands.send_command("Xst",ekf.XR(0));
+    serial_commands.send_command("Yst",ekf.XR(1));
+    serial_commands.send_command("Thetast",ekf.XR(2));
+
+      
+
+    //}
+  
+
+    
 
     
 
@@ -565,11 +653,16 @@ void loop() {
     //Serial.printf(" U1: %f", robot.u1);
     //Serial.printf(" U2: %f", robot.u2);
 
-    //robot.calcMotorsVoltage();
-    //setMotorsPWM(robot.u1, robot.u2);
+    robot.calcMotorsVoltage();
+    setMotorsPWM(robot.u1, robot.u2);
     //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
 
     // Debug information
+    
+
+    
+    
+
     serial_commands.send_command("u1", robot.u1);
     serial_commands.send_command("u2", robot.u2);
 
@@ -614,6 +707,8 @@ void loop() {
     Serial.println();
 
     http_ota.handle();
+    }
+    }
   }
 }
 
