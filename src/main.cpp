@@ -441,13 +441,14 @@ void setup() {
 }
 
 uint8_t b;
+bool scanDone = false;
 
 void loop() {
   
-  /*if (SerialTiny.available()) { 
+  if (SerialTiny.available()) { 
     b = SerialTiny.read();  
     robot.battery_voltage = 1e-3 * ((b >> 1) * 50 + 4800);
-  }*/
+  }
 
   /*if (Serial1.available()) {
     int b = Serial1.read();
@@ -501,17 +502,24 @@ void loop() {
       if (ldsUpdate(&lds_scan, Serial1.read())) {
       // Complete scan received
       // Now you can safely print or process the full scan
+      scanDone = false;
       
       // Optional: Print complete scan data here instead
         for(int i=0; i<360; i++) {
-          ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001; //in meters
+          ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001;
+          scanDone = true; //in meters
         }
+      }
+    }
       
-    
+      
   
   currentMicros = micros();
   if(currentMicros - previousMicros >= interval){
      previousMicros = currentMicros;
+
+     
+    if(scanDone){
 
      read_PIO_encoders();
      //Serial.println(lds_scan.motor_speed);
@@ -555,7 +563,7 @@ void loop() {
       serial_commands.send_command("By3", ekf.BeaconCluster[3].y);
       serial_commands.send_command("Bd3", ekf.BeaconCluster[3].dist);
       serial_commands.send_command("Bt3", ekf.BeaconCluster[3].angle);
-      
+
       for(int j=0; j<NBEACONS; j++){
         Serial.print(" Beacon "); Serial.print(j);
         Serial.print(" X: "); Serial.print(ekf.BeaconCluster[j].x);
@@ -652,7 +660,7 @@ void loop() {
     //Serial.printf(" rel_s: %f", robot.rel_s);
     //Serial.printf(" U1: %f", robot.u1);
     //Serial.printf(" U2: %f", robot.u2);
-
+    
     robot.calcMotorsVoltage();
     setMotorsPWM(robot.u1, robot.u2);
     //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
@@ -708,7 +716,10 @@ void loop() {
 
     http_ota.handle();
     }
-    }
+    else{
+      Serial.println("No scan data");}
+    
+    
   }
 }
 
