@@ -9,6 +9,7 @@
 #include "trajectories.h"
 
 #include "lds_driver.hpp"
+#include "goToXY.h"
 
 TOF stof;
 
@@ -436,7 +437,8 @@ void setup() {
 
   SerialTiny.begin(); //leitura da tensão da bateria
 
-  robot.control_mode = cm_pid;
+  robot.control_mode = cm_kinematics;
+  //robot.control_mode = cm_kinematics;
 
 }
 
@@ -524,21 +526,6 @@ void loop() {
      read_PIO_encoders();
      //Serial.println(lds_scan.motor_speed);
      stof.calculateTOF();
-
-     //robot.odometry();
-
-    //  if(Serial1.available() > 0)
-    // {
-    //   if (ldsUpdate(&lds_scan, Serial1.read())) {
-    //   // Complete scan received
-    //   // Now you can safely print or process the full scan
-      
-    //   // Optional: Print complete scan data here instead
-    //   for(int i=0; i<360; i++) {
-    //     ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001; //in meters
-    //     // Serial.print(i); Serial.print(" "); 
-    //     // Serial.print(ekf.LaserValues(0,i)); Serial.println(" ");
-    //   }
       
       robot.odometry(); 
       //ekf.predict(robot.ve, robot.we, robot.dt); //robot.dt??
@@ -577,100 +564,18 @@ void loop() {
       //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
       ekf.motionmodelEKF();
       
-      //for(int j=0; j<NBEACONS; j++){
-        //if(ekf.BeaconCluster[j].n > 0){
-            //predict(vlin, omega, dt);
-            // ekf.updateEKF(j);
-            // Serial.print(" Ze_Dist: "); Serial.print(ekf.Z_E(0));
-            // Serial.print("  Ze_Angle: "); Serial.println((ekf.Z_E(1)*180)/PI);
-            
-            // Serial.print("  Xst: "); Serial.print(ekf.XR(0));
-            // Serial.print("  Xekf: "); Serial.println(ekf.XRe(0));
-            
-            // Serial.print("  Yst: "); Serial.print(ekf.XR(1));
-            // Serial.print("  Yekf: "); Serial.println(ekf.XRe(1));
-            
-            // Serial.print("  Thetast: "); Serial.print((ekf.XR(2)*180)/PI);
-            // Serial.print("  Thetaekf: "); Serial.println((ekf.XRe(2)*180)/PI);
-        //}
-      //}
-      
-
-      
-
-      // Serial.print(" Ze_Dist: "); Serial.print(ekf.Z_E(0));
-      // Serial.print("  Ze_Angle: "); Serial.println((ekf.Z_E(1)*180)/PI);
-      // Serial.println("Kalman Gain: ");
-      // for(int r=0; r<NStates; r++){
-      //     for(int c=0; c<NObs; c++)
-      //     {
-      //         Serial.print(ekf.K(r,c)); Serial.print(" ");
-      //     }
-      //     Serial.println();
-      // }
-      // Serial.print("XOdom: "); Serial.print(robot.xe);
-      // Serial.print("  Xst: "); Serial.print(ekf.XR(0));
-      // Serial.print("  Xekf: "); Serial.println(ekf.XRe(0));
-      // Serial.print("YOdom: "); Serial.print(robot.ye);
-      // Serial.print("  Yst: "); Serial.print(ekf.XR(1));
-      // Serial.print("  Yekf: "); Serial.println(ekf.XRe(1));
-      // Serial.print("ThetaOdom: "); Serial.print((robot.thetae*180)/PI);
-      // Serial.print("  Thetast: "); Serial.print((ekf.XR(2)*180)/PI);
-      // Serial.print("  Thetaekf: "); Serial.println((ekf.XRe(2)*180)/PI);
   
 
     serial_commands.send_command("Xst",ekf.XR(0));
     serial_commands.send_command("Yst",ekf.XR(1));
     serial_commands.send_command("Thetast",ekf.XR(2));
 
-      
-
-    //}
-  
-
-    
-
-    
-
-
-
-    
-
-  /*if (robot.xe < 0.29){
-      robot.v = 0.05;
-      robot.w = 0;
-    }else{
-      robot.v = 0;
-      robot.w = 0;     
-    }
-   if (robot.thetae<6.28){
-      robot.w1_req=2;
-      robot.w2_req=0;
-    } else {
-      robot.w1_req=0;
-      robot.w2_req=0;
-    }*/
-   
-    //Serial1.write("e");
-
-    //printEncoders();
-    //printOdometry();
-    
-    //printTof();
-    //Serial.printf(" rel_s: %f", robot.rel_s);
-    //Serial.printf(" U1: %f", robot.u1);
-    //Serial.printf(" U2: %f", robot.u2);
+    //gotoXY(0.0, 1.27, 1.57);
     
     robot.calcMotorsVoltage();
     setMotorsPWM(robot.u1, robot.u2);
-    //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
-
+    
     // Debug information
-    
-
-    
-    
-
     serial_commands.send_command("u1", robot.u1);
     serial_commands.send_command("u2", robot.u2);
 

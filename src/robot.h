@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <math.h>
 #include "PID.h"
+#include "utils.h"
 
 
 #ifndef NUM_WHEELS
@@ -23,6 +24,33 @@ enum RobotMode {
   pickingBox,
   droppingBoxFront,
   droppingBoxBack
+};
+
+//GotoXY Declarations
+// #define ROTATE_RIGHT 1
+// #define ROTATE_LEFT -1
+
+// #define MAX_ETF 0.05f
+// #define TOL_FINDIST 0.01f
+// #define DIST_DA 0.2f
+// #define HIST_ETF (5*M_PI/180) //5 degrees in radians
+// #define DIST_NEWPOSE 0.5f
+// #define THETA_DA (15*M_PI/180) //15 degrees in radians
+// #define TOL_FINTHETA (M_PI/180) //1 degrees in radians
+// #define THETA_NEWPOSE (15*M_PI/180) //15 degrees in radians
+// #define GAIN_DA 0.005f
+// #define GAIN_FWD 0.02f
+// #define VEL_ANG_NOM 0.2
+// #define VEL_LIN_NOM 5
+// #define W_DA 0.01
+
+enum class GotoXYState {
+  ROTATION=0,
+  GO_FORWARD,
+  DEACCEL,
+  FINAL_ROT,
+  DEACCEL_FINAL_ROT,
+  STOP
 };
 
 class robot_t {
@@ -74,6 +102,8 @@ class robot_t {
   //gchannels_t* pchannels;
 
   RobotMode mode;
+  //GotoXYState gotoXYState;
+  GotoXYState gotoXYState;
 
   robot_t();
 
@@ -82,6 +112,9 @@ class robot_t {
 
   void accelerationLimit(void);
   void calcMotorsVoltage(void);
+
+  // void gotoXY(float xf, float yf, float tf);
+  // void navigateSquare();
 
 
 };
