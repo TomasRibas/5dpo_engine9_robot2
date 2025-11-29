@@ -19,7 +19,7 @@ const double THETA_DA      = 15 * M_PI/180.0;
 const double TOL_FINTHETA  =  1 * M_PI/180.0;
 
 // ----- Global variables -----
-double x = 0.0, y = 0.0, theta = 0.0;
+double x = 0.2, y = 0, theta = 1.57; //Initial State
 double vlin = 0.0, omega = 0.0;
 
 GoToXYState state = Rotation;
@@ -47,16 +47,15 @@ int sign(double v) {
 // ----- Stub (replace with your motor control code) -----
 void MotorVel(float v_req, float w_req) {
     robot.setRobotVW(v_req, w_req);
-    robot.accelerationLimit();  // <-- ADD THIS LINE!
-    robot.calcMotorsVoltage();
+
 }
 
 // ----- Main function -----
 void gotoXY(double xf, double yf, double tf)
 {
-    x = robot.xe;
-    y = robot.ye;
-    theta = robot.thetae;
+    // x = robot.xe;
+    // y = robot.ye;
+    // theta = robot.thetae;
 
     double ang_target      = std::atan2(yf - y, xf - x);
     double error_ang       = NormalizeAngle(ang_target - theta);

@@ -61,7 +61,7 @@ int udp_on, ip_on;
 WiFiUDP Udp;
 unsigned int localUdpPort = 4224;  // local port to listen on
 
-#define UDP_MAX_SIZE 512
+#define UDP_MAX_SIZE 1024
 uint8_t UdpInPacket[UDP_MAX_SIZE];  // buffer for incoming packets
 uint8_t UdpOutPacket[UDP_MAX_SIZE];  // buffer for outgoing packets
 int UdpBufferSize = UDP_MAX_SIZE;
@@ -74,6 +74,7 @@ commands_list_t pars_list;
 
 const char *pars_fname = "pars.cfg";
 bool load_pars_requested = false ;
+bool gotoXY_req = false;
 
 void set_interval(float new_interval)
 {
@@ -100,6 +101,22 @@ void process_command(command_frame_t frame)
 
   } else if (frame.command_is("w2")) {
     robot.w2_req = frame.value;
+
+  }  else if (frame.command_is("gtx")) {
+    robot.gotoX = frame.value;
+    gotoXY_req=true;
+
+  } else if (frame.command_is("gty")) { 
+     robot.gotoY = frame.value;
+     gotoXY_req=true;
+
+  } else if (frame.command_is("gtt")) { 
+     robot.gotoTheta = frame.value;
+     gotoXY_req=true;
+
+  } else if (frame.command_is("gtm")) { 
+     robot.gotoXYState = (GotoXYState)(frame.value);
+     gotoXY_req=true;
 
   } else if (frame.command_is("dt")) { 
      set_interval(frame.value);
@@ -322,9 +339,10 @@ void serial_write(const char *buffer, size_t size)
   } 
 }
 
+
 void setup() {
 
-  interval = 60 * 1000;
+  set_interval(0.04);  // In seconds
 
   analogReadResolution(10);
 
@@ -368,10 +386,10 @@ void setup() {
 
 
   // All wheeel PID controllers share the same parameters
-  wheel_PID_pars.Kf = 0.3;
-  wheel_PID_pars.Kc = 0.15;
-  wheel_PID_pars.Ki = 1;
-  wheel_PID_pars.Kd = 0.5;
+  wheel_PID_pars.Kf = 0.35;
+  wheel_PID_pars.Kc = 0.7;
+  wheel_PID_pars.Ki = 2.25;
+  wheel_PID_pars.Kd = 0;
   wheel_PID_pars.Kfd = 0;
   wheel_PID_pars.dt = control_interval;
   wheel_PID_pars.dead_zone = 0;
@@ -528,7 +546,7 @@ void loop() {
      stof.calculateTOF();
       
       robot.odometry(); 
-      //ekf.predict(robot.ve, robot.we, robot.dt); //robot.dt??
+      ekf.predict(robot.ve, robot.we, robot.dt); //robot.dt??
       ekf.phaseAV();
           //BEACON CLUSTERS 0-3
       serial_commands.send_command("Bx0", ekf.BeaconCluster[0].x);
@@ -570,11 +588,17 @@ void loop() {
     serial_commands.send_command("Yst",ekf.XR(1));
     serial_commands.send_command("Thetast",ekf.XR(2));
 
-    //gotoXY(0.0, 1.27, 1.57);
-    
+    // if (gotoXY_req)
+    // {
+      //gotoXY(0.2, 1.27, 1.57);
+    // }
+    robot.accelerationLimit(); 
     robot.calcMotorsVoltage();
     setMotorsPWM(robot.u1, robot.u2);
+
     
+    // robot.calcMotorsVoltage();
+    // setMotorsPWM(robot.u1, robot.u2);
     // Debug information
     serial_commands.send_command("u1", robot.u1);
     serial_commands.send_command("u2", robot.u2);
@@ -589,6 +613,21 @@ void loop() {
 
     serial_commands.send_command("w1", robot.w1e);
     serial_commands.send_command("w2", robot.w2e);
+
+    serial_commands.send_command("w1req", robot.w1_req);
+    serial_commands.send_command("w2req", robot.w2_req);
+
+    serial_commands.send_command("kc", wheel_PID_pars.Kc);
+    serial_commands.send_command("ki", wheel_PID_pars.Ki);
+    serial_commands.send_command("kd", wheel_PID_pars.Kd);
+    serial_commands.send_command("kf", wheel_PID_pars.Kf);
+    serial_commands.send_command("kfd", wheel_PID_pars.Kfd);
+
+    serial_commands.send_command("gtx", robot.gotoX);
+    serial_commands.send_command("gty", robot.gotoY);
+    serial_commands.send_command("gtt", robot.gotoTheta);
+    serial_commands.send_command("gtm", (int)(robot.gotoXYState));
+
 
     serial_commands.send_command("sl", robot.solenoid_PWM);
 

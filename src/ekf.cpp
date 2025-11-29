@@ -50,7 +50,7 @@ EKF::EKF(){
 
     //set initial state
     XR(0) = 0.2;
-    XR(1) = 0.095;
+    XR(1) = 0;
     XR(2) = 1.57;
 
     //set df//dX

@@ -104,6 +104,7 @@ class robot_t {
   RobotMode mode;
   //GotoXYState gotoXYState;
   GotoXYState gotoXYState;
+  float gotoX, gotoY, gotoTheta;
 
   robot_t();
 

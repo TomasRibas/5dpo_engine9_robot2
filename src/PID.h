@@ -16,6 +16,7 @@ class PID_t
     PID_pars_t pars;   // Internal pars
     PID_pars_t* ppars; // External pars
     float y, y_ref;
+    float y_ref_filt;
     float e, last_e, Se;
     float m, m_max, m_min;
     uint8_t active;

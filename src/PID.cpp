@@ -7,11 +7,11 @@ PID_t::PID_t()
   
   // Some typical values
   pars.Kfd = 0;
-  pars.Kf = 0.33;
-  pars.Kc = 0.15;
-  pars.Ki = 1;
+  pars.Kf = 0.4;
+  pars.Kc = 0.7;
+  pars.Ki = 1.5;
   pars.Kd = 0;
-  pars.dt = 0.04;
+  pars.dt = 0.06;
   pars.dead_zone = 0.2;
 
   m_max = 12;
@@ -33,6 +33,17 @@ float PID_t::calc(float new_y_ref, float new_y)
 {
   float de, dy_ref;
   y = new_y;
+
+  // Apply reference filter to cancel PI zero
+  // Filter: y_ref_filt(k) = a0 * y_ref_filt(k-1) + b0 * y_ref(k)
+  // where a0 = exp(-dt/Ti) and b0 = 1 - a0
+  float a0 = exp(-ppars->dt / (ppars->Kc/ppars->Ki));
+  float b0 = 1.0f - a0;
+  y_ref_filt = a0 * y_ref_filt + b0 * new_y_ref;
+  
+  // dy_ref = (y_ref_filt - y_ref) / ppars->dt;
+  // y_ref = y_ref_filt;
+
   dy_ref = (new_y_ref - y_ref) / ppars->dt;
   y_ref = new_y_ref;
 

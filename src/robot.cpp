@@ -30,6 +30,11 @@ robot_t::robot_t()
   pchannels = NULL;
   pfsm = NULL;*/
 
+  //Set initial state
+  xe=0.2;
+  ye=0;
+  thetae=1.57;
+
   gotoXYState = GotoXYState::STOP;
 }
 
@@ -92,6 +97,8 @@ void robot_t::calcMotorsVoltage(void)
   } else if (control_mode == cm_pid) {
     w1ref = w1_req;
     w2ref = w2_req;
+
+    
 
   } else if (control_mode == cm_kinematics) {
     v1ref = v + w * wheel_dist / 2;
