@@ -118,6 +118,39 @@ void process_command(command_frame_t frame)
      robot.gotoXYState = (GotoXYState)(frame.value);
      gotoXY_req=true;
 
+  } else if (frame.command_is("Xxr")) { 
+    ekf.XR(0) = frame.value;
+
+  }  else if (frame.command_is("Xyr")) { 
+    ekf.XR(1) = frame.value;
+    
+  }  else if (frame.command_is("Xtr")) { 
+    ekf.XR(2) = frame.value;
+    
+  }  else if (frame.command_is("Bx0")) { 
+    ekf.BeaconCluster[0].x = frame.value;
+    
+  } else if (frame.command_is("By0")) { 
+    ekf.BeaconCluster[0].y = frame.value;
+    
+  } else if (frame.command_is("Bx1")) { 
+    ekf.BeaconCluster[1].x = frame.value;
+    
+  } else if (frame.command_is("By1")) { 
+    ekf.BeaconCluster[1].y = frame.value;
+    
+  } else if (frame.command_is("Bx2")) { 
+    ekf.BeaconCluster[2].x = frame.value;
+    
+  } else if (frame.command_is("By2")) { 
+    ekf.BeaconCluster[2].y = frame.value;
+    
+  } else if (frame.command_is("Bx3")) { 
+    ekf.BeaconCluster[3].x = frame.value;
+    
+  } else if (frame.command_is("By3")) { 
+    ekf.BeaconCluster[3].y = frame.value;
+    
   } else if (frame.command_is("dt")) { 
      set_interval(frame.value);
 
@@ -386,7 +419,7 @@ void setup() {
 
 
   // All wheeel PID controllers share the same parameters
-  wheel_PID_pars.Kf = 0.35;
+  wheel_PID_pars.Kf = 0.15;
   wheel_PID_pars.Kc = 0.7;
   wheel_PID_pars.Ki = 2.25;
   wheel_PID_pars.Kd = 0;
@@ -578,7 +611,7 @@ void loop() {
       } 
 
       
-      ekf.predict(robot.ve, robot.we, robot.dt);
+      //ekf.predict(robot.ve, robot.we, robot.dt);
       //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
       ekf.motionmodelEKF();
       
@@ -590,7 +623,7 @@ void loop() {
 
     // if (gotoXY_req)
     // {
-      //gotoXY(0.2, 1.27, 1.57);
+      //gotoXY(0.125, 0.8, 3.14);
     // }
     robot.accelerationLimit(); 
     robot.calcMotorsVoltage();

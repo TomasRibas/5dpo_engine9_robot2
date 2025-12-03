@@ -31,7 +31,7 @@ robot_t::robot_t()
   pfsm = NULL;*/
 
   //Set initial state
-  xe=0.2;
+  xe=0.125;
   ye=0;
   thetae=1.57;
 

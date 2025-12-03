@@ -1,10 +1,10 @@
 #include "goToXY.h"
 
 // ----- Constants -----
-const double VEL_ANG_NOM = 0.2;//0.4;
-const double VEL_LIN_NOM = 5;//0.2;
-const double W_DA        = 0.01;//0.5;
-const double LinDeAccel  = 2.5;//0.1;
+const double VEL_ANG_NOM = 1;//0.4;
+const double VEL_LIN_NOM = 0.2;//0.2;
+const double W_DA        = 0.4;//0.5;
+const double LinDeAccel  = 0.075;//0.1;
 
 const double MAX_ETF     = 10 * M_PI/180.0;
 const double HIST_ETF    =  5 * M_PI/180.0;
@@ -53,9 +53,9 @@ void MotorVel(float v_req, float w_req) {
 // ----- Main function -----
 void gotoXY(double xf, double yf, double tf)
 {
-    // x = robot.xe;
-    // y = robot.ye;
-    // theta = robot.thetae;
+    x = robot.xe;
+    y = robot.ye;
+    theta = robot.thetae;
 
     double ang_target      = std::atan2(yf - y, xf - x);
     double error_ang       = NormalizeAngle(ang_target - theta);

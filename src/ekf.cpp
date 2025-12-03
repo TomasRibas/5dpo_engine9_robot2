@@ -29,14 +29,14 @@ EKF::EKF(){
     Q(1, 1) = pow(0.0005, 2); //process noise omega
 
     R.Fill(0.0);
-    R(0, 0) = pow(0.1, 2); //measurement noise distance
-    R(1, 1) = pow(0.1, 2); //measurement noise angle
+    R(0, 0) = pow(0.035, 2); //measurement noise distance
+    R(1, 1) = pow(0.01745, 2); //measurement noise angle
 
     //set Beacon positions
     BeaconPos[0].x = 0; BeaconPos[0].y = 0;
-    BeaconPos[1].x = 0; BeaconPos[1].y = 1.27;
-    BeaconPos[2].x = 1.78; BeaconPos[2].y = 1.27;
-    BeaconPos[3].x = 1.78; BeaconPos[3].y = 0;
+    BeaconPos[1].x = 0; BeaconPos[1].y = 1.19;
+    BeaconPos[2].x = 1.56; BeaconPos[2].y = 1.19;
+    BeaconPos[3].x = 1.56; BeaconPos[3].y = 0;
 
     //init BeaconCluster
     for(int j=0; j<NBEACONS; j++){
@@ -49,7 +49,7 @@ EKF::EKF(){
     }
 
     //set initial state
-    XR(0) = 0.2;
+    XR(0) = 0.125;
     XR(1) = 0;
     XR(2) = 1.57;
 
@@ -172,12 +172,13 @@ void EKF::updateEKF(int nBeacon){
 
 void EKF::phaseAV(){
     //Association and validation
+    float dist_ldr2rbt = 0.005;
     for(int j=0; j < NBEACONS; j++){
         // BeaconCluster[j].x = 0;
         // BeaconCluster[j].y = 0;
         BeaconCluster[j].n = 0;
-        idx_beacon = round((normalizeAngle(atan2(BeaconPos[j].y - XR(1) - 0.07*sin(XR(2)), 
-                BeaconPos[j].x - XR(0) - 0.07*cos(XR(2))) - XR(2)))
+        idx_beacon = round((normalizeAngle(atan2(BeaconPos[j].y - XR(1) - dist_ldr2rbt*sin(XR(2)), 
+                BeaconPos[j].x - XR(0) - dist_ldr2rbt*cos(XR(2))) - XR(2)))
                     /(M_PI/180)); //angle to beacon in robot frame
                     //might not need + M_PI
         BeaconCluster[j].firstRay = idx_beacon - deltaRay;
@@ -193,8 +194,8 @@ void EKF::phaseAV(){
             Serial.print(" LIDAR idx: "); Serial.print(idx);
             Serial.print(" Dist: "); Serial.println(MeasureDist);
             if(MeasureDist > 0){
-                MeasurePos.x = MeasureDist*cos((idx)*M_PI/180 +  XR(2)) + XR(0) + 0.07*cos(XR(2) );//was -0.085
-                MeasurePos.y = MeasureDist*sin((idx)*M_PI/180 +  XR(2)) + XR(1) + 0.07*sin(XR(2) );//was -0.085
+                MeasurePos.x = MeasureDist*cos((idx)*M_PI/180 +  XR(2)) + XR(0) + dist_ldr2rbt*cos(XR(2) );//was -0.085
+                MeasurePos.y = MeasureDist*sin((idx)*M_PI/180 +  XR(2)) + XR(1) + dist_ldr2rbt*sin(XR(2) );//was -0.085
                 float d = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
                 Serial.print("Threshold Distance: "); Serial.println(d);
                 if(dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y) < 0.1){ //Adjust threshold
@@ -223,7 +224,7 @@ void EKF::motionmodelEKF(){
     for(int j=0; j<NBEACONS; j++){
         if(BeaconCluster[j].n > 0){
             //predict(vlin, omega, dt);
-            updateEKF(j);
+            //updateEKF(j);
         }
     }
     
