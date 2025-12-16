@@ -9,7 +9,7 @@
 #include "trajectories.h"
 
 #include "lds_driver.hpp"
-#include "goToXY.h"
+#include "followLine.h"
 
 TOF stof;
 
@@ -210,7 +210,13 @@ void send_file(const char* filename, int log_high)
 int analogWriteBits = 10; 
 int analogWriteMax = (1 << analogWriteBits) - 1; 
 
-SerialPIO SerialTiny(SerialPIO::NOPIN, 21);
+#ifdef NOPIN
+#undef NOPIN
+#endif
+
+//SerialPIO SerialTiny(SerialPIO::NOPIN, 21);
+SerialPIO SerialTiny((pin_size_t)-1, 21);
+
 
 
 /////////////////////////////MOTORS/////////////////////////////
@@ -398,6 +404,9 @@ void setup() {
     robot.PID[i].init_pars(&wheel_PID_pars);
   }
 
+  // strcpy(ssid, "5DPO-NETWORK");
+  // strcpy(password, "5dpo5dpo");^
+
   strcpy(ssid, "5DPO-NETWORK");
   strcpy(password, "5dpo5dpo");
 
@@ -489,7 +498,6 @@ void loop() {
     // Connection established
     serial_commands.send_command("msg", (String("Pico W is connected to WiFi network with SSID ") + WiFi.SSID()).c_str());
  
-    // Print IP Address
     ip_on = Udp.begin(localUdpPort);
     Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localUdpPort);
   }
@@ -569,17 +577,15 @@ void loop() {
       serial_commands.send_command("Bd3", ekf.BeaconCluster[3].dist);
       serial_commands.send_command("Bt3", ekf.BeaconCluster[3].angle);
 
-      for(int j=0; j<NBEACONS; j++){
-        Serial.print(" Beacon "); Serial.print(j);
-        Serial.print(" X: "); Serial.print(ekf.BeaconCluster[j].x);
-        Serial.print(" Y: "); Serial.print(ekf.BeaconCluster[j].y);
-        Serial.print(" Dist: "); Serial.print(ekf.BeaconCluster[j].dist);
-        Serial.print(" Angle: "); Serial.println(ekf.BeaconCluster[j].angle * 180 / M_PI);
-      } 
+      // for(int j=0; j<NBEACONS; j++){
+      //   Serial.print(" Beacon "); Serial.print(j);
+      //   Serial.print(" X: "); Serial.print(ekf.BeaconCluster[j].x);
+      //   Serial.print(" Y: "); Serial.print(ekf.BeaconCluster[j].y);
+      //   Serial.print(" Dist: "); Serial.print(ekf.BeaconCluster[j].dist);
+      //   Serial.print(" Angle: "); Serial.println(ekf.BeaconCluster[j].angle * 180 / M_PI);
+      // } 
 
-      
-      ekf.predict(robot.ve, robot.we, robot.dt);
-      //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
+            //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
       ekf.motionmodelEKF();
       
   

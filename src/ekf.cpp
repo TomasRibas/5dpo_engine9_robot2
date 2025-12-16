@@ -8,7 +8,7 @@ TPos MeasurePos;
 
 EKF::EKF(){
     //dt
-    dt = 0.06; //40 ms
+    dt = 0.04; //40 ms
     //Lidar rate 1.8kHz -> 0.555 ms
     LaserValues.Fill(0.0);
 
