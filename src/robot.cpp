@@ -6,7 +6,6 @@
 
 robot_t robot;
 
-
 template <typename T> int sign(T val) 
 {
   return (T(0) < val) - (val < T(0));
@@ -31,11 +30,10 @@ robot_t::robot_t()
   pfsm = NULL;*/
 
   //Set initial state
-  xe=0.2;
-  ye=0;
+  xe=-0.785;
+  ye=-0.57;
   thetae=1.57;
 
-  gotoXYState = GotoXYState::STOP;
 }
 
 void robot_t::odometry(void)
@@ -128,143 +126,6 @@ void robot_t::calcMotorsVoltage(void)
 
 }
 
-// void robot_t::gotoXY(float xf, float yf, float tf)
-// {
-//   float rotateTo, rotateToFinal;
-//   float angTarget;
-//   float errDist, errAng, errFinalRot;
-
-//   angTarget = atan2f(yf - ye, xf - xe);
-//   errAng = normalizeAngle(angTarget - thetae);
-//   errDist = dist(xf-xe, yf-ye);
-//   errFinalRot = normalizeAngle(tf - thetae);
-
-
-//   //Find fastest rotation direction
-//   if (errAng > 0) rotateTo = ROTATE_RIGHT;
-//   else rotateTo = ROTATE_LEFT;
-
-//   if (errFinalRot > 0) rotateToFinal = ROTATE_RIGHT;
-//   else rotateToFinal = ROTATE_LEFT;
-
-//   // Transitions
-//   switch(gotoXYState) {
-//     case GotoXYState::ROTATION:
-//       if (fabs(errAng) < MAX_ETF) {
-//         gotoXYState = GotoXYState::GO_FORWARD;
-//       } else if (errDist < TOL_FINDIST) {
-//         gotoXYState = GotoXYState::FINAL_ROT;
-//       }
-//       break;
-
-//     case GotoXYState::GO_FORWARD:
-//       if (errDist < TOL_FINDIST) {
-//         gotoXYState = GotoXYState::FINAL_ROT;
-//       } else if (errDist < DIST_DA) {
-//         gotoXYState = GotoXYState::DEACCEL;
-//       } else if (fabs(errAng) > MAX_ETF + HIST_ETF) {
-//         gotoXYState = GotoXYState::ROTATION;
-//       }
-//       break;
-
-//     case GotoXYState::DEACCEL:
-//       if (errDist < TOL_FINDIST) {
-//         gotoXYState = GotoXYState::FINAL_ROT;
-//       } else if (errDist > DIST_NEWPOSE) {
-//         gotoXYState = GotoXYState::ROTATION;
-//       }
-//       break;
-
-//     case GotoXYState::FINAL_ROT:
-//       if (fabs(errFinalRot) < THETA_DA) {
-//         gotoXYState = GotoXYState::DEACCEL_FINAL_ROT;
-//       } else if (errDist > DIST_NEWPOSE) {
-//         gotoXYState = GotoXYState::ROTATION;
-//       }
-//       break;
-
-//     case GotoXYState::DEACCEL_FINAL_ROT:
-//       if (fabs(errFinalRot) < TOL_FINTHETA) {
-//         gotoXYState = GotoXYState::STOP;
-//       } else if ((errDist > DIST_NEWPOSE) || (fabs(errFinalRot) > THETA_NEWPOSE)) {
-//         gotoXYState = GotoXYState::ROTATION;
-//       }
-//       break;
-
-//     case GotoXYState::STOP:
-//       if ((errDist > DIST_NEWPOSE) || (fabs(errFinalRot) > THETA_NEWPOSE)) {
-//         gotoXYState = GotoXYState::ROTATION;
-//       }
-//       break;
-
-//     default:
-//       gotoXYState = GotoXYState::STOP;
-//       break;
-//   }
-
-//   // Outputs
-//   switch(gotoXYState) {
-//     case GotoXYState::ROTATION:
-//       v_req = 0;
-//       w_req = rotateTo * 0.1f * VEL_ANG_NOM;
-//       break;
-
-//     case GotoXYState::GO_FORWARD:
-//       v_req = VEL_LIN_NOM;
-//       w_req = GAIN_FWD * errAng;
-//       break;
-
-//     case GotoXYState::DEACCEL:
-//       // Linear deceleration based on distance
-//       v_req = VEL_LIN_NOM * (errDist / DIST_DA);
-//       w_req = GAIN_DA * errAng;
-//       break;
-
-//     case GotoXYState::FINAL_ROT:
-//       v_req = 0;
-//       w_req = rotateToFinal * 0.1f * VEL_ANG_NOM;
-//       break;
-
-//     case GotoXYState::DEACCEL_FINAL_ROT:
-//       v_req = 0;
-//       w_req = sign(errFinalRot) * W_DA;
-//       break;
-
-//     case GotoXYState::STOP:
-//       v_req = 0;
-//       w_req = 0;
-//       break;
-
-//     default:
-//       v_req = 0;
-//       w_req = 0;
-//       break;
-//   }
-//   setRobotVW(v_req, w_req);
-//   calcMotorsVoltage();
-// }
-
-// void robot_t::navigateSquare() {
-//   static int waypointIndex = 0;
-//   static float squareWaypoints[][3] = {
-//     {0.0, 0.0, M_PI/2},    // Waypoint 0: (0.5, 0, 90°)
-//     {0.0, 1.27, M_PI},      // Waypoint 1: (0.5, 0.5, 180°)
-//     {1.78, 1.27, 3*M_PI/2},  // Waypoint 2: (0, 0.5, 270°)
-//     {1.78, 1.27, 0.0}        // Waypoint 3: (0, 0, 0°)
-//   };
-  
-//   // Execute current waypoint
-//   gotoXY(squareWaypoints[waypointIndex][0], 
-//                squareWaypoints[waypointIndex][1], 
-//                squareWaypoints[waypointIndex][2]);
-  
-//   // Check if reached waypoint and move to next
-//   if(gotoXYState == GotoXYState::STOP) {
-//     waypointIndex = (waypointIndex + 1) % 4; // Loop through waypoints
-//     gotoXYState = GotoXYState::ROTATION; // Reset for next waypoint
-//     // Optional pause at each corner
-//   }
-// }
 
 
 

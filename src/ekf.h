@@ -18,7 +18,8 @@
 #define sensD_stddev 0.005
 #define sensA_stddev 0.009 //radians
 
-#define deltaRay 8
+//#define deltaRay 8
+#define deltaRay 5
 
 #define NStates 3 // x, y, theta
 #define NObs 2 // range, angle

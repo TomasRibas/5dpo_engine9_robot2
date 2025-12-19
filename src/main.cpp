@@ -11,6 +11,8 @@
 #include "lds_driver.hpp"
 #include "followLine.h"
 
+//FollowLineController fl;
+
 TOF stof;
 
 unsigned long interval;
@@ -115,7 +117,7 @@ void process_command(command_frame_t frame)
      gotoXY_req=true;
 
   } else if (frame.command_is("gtm")) { 
-     robot.gotoXYState = (GotoXYState)(frame.value);
+     state = (GoToXYState)(frame.value);;
      gotoXY_req=true;
 
   } else if (frame.command_is("dt")) { 
@@ -594,12 +596,13 @@ void loop() {
     serial_commands.send_command("Yst",ekf.XR(1));
     serial_commands.send_command("Thetast",ekf.XR(2));
 
-    // if (gotoXY_req)
-    // {
-      //gotoXY(0.2, 1.27, 1.57);
-    // }
+
+    setPose(robot.xe, robot.ye, robot.thetae);
+    
+    followLine(-0.785, -0.57, -0.6, -0.2, 1.57);
+
     robot.accelerationLimit(); 
-    robot.calcMotorsVoltage();
+    robot.calcMotorsVoltage(); 
     setMotorsPWM(robot.u1, robot.u2);
 
     
@@ -632,7 +635,7 @@ void loop() {
     serial_commands.send_command("gtx", robot.gotoX);
     serial_commands.send_command("gty", robot.gotoY);
     serial_commands.send_command("gtt", robot.gotoTheta);
-    serial_commands.send_command("gtm", (int)(robot.gotoXYState));
+    serial_commands.send_command("gtm", (int)(followLineState));
 
 
     serial_commands.send_command("sl", robot.solenoid_PWM);
