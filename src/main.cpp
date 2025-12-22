@@ -9,7 +9,9 @@
 #include "trajectories.h"
 
 #include "lds_driver.hpp"
-#include "goToXY.h"
+#include "followLine.h"
+
+//FollowLineController fl;
 
 TOF stof;
 
@@ -115,7 +117,7 @@ void process_command(command_frame_t frame)
      gotoXY_req=true;
 
   } else if (frame.command_is("gtm")) { 
-     robot.gotoXYState = (GotoXYState)(frame.value);
+     state = (GoToXYState)(frame.value);;
      gotoXY_req=true;
 
   } else if (frame.command_is("Xxr")) { 
@@ -243,7 +245,13 @@ void send_file(const char* filename, int log_high)
 int analogWriteBits = 10; 
 int analogWriteMax = (1 << analogWriteBits) - 1; 
 
-SerialPIO SerialTiny(SerialPIO::NOPIN, 21);
+#ifdef NOPIN
+#undef NOPIN
+#endif
+
+//SerialPIO SerialTiny(SerialPIO::NOPIN, 21);
+SerialPIO SerialTiny((pin_size_t)-1, 21);
+
 
 
 /////////////////////////////MOTORS/////////////////////////////
@@ -431,6 +439,9 @@ void setup() {
     robot.PID[i].init_pars(&wheel_PID_pars);
   }
 
+  // strcpy(ssid, "5DPO-NETWORK");
+  // strcpy(password, "5dpo5dpo");^
+
   strcpy(ssid, "5DPO-NETWORK");
   strcpy(password, "5dpo5dpo");
 
@@ -522,7 +533,6 @@ void loop() {
     // Connection established
     serial_commands.send_command("msg", (String("Pico W is connected to WiFi network with SSID ") + WiFi.SSID()).c_str());
  
-    // Print IP Address
     ip_on = Udp.begin(localUdpPort);
     Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localUdpPort);
   }
@@ -602,17 +612,21 @@ void loop() {
       serial_commands.send_command("Bd3", ekf.BeaconCluster[3].dist);
       serial_commands.send_command("Bt3", ekf.BeaconCluster[3].angle);
 
-      for(int j=0; j<NBEACONS; j++){
-        Serial.print(" Beacon "); Serial.print(j);
-        Serial.print(" X: "); Serial.print(ekf.BeaconCluster[j].x);
-        Serial.print(" Y: "); Serial.print(ekf.BeaconCluster[j].y);
-        Serial.print(" Dist: "); Serial.print(ekf.BeaconCluster[j].dist);
-        Serial.print(" Angle: "); Serial.println(ekf.BeaconCluster[j].angle * 180 / M_PI);
-      } 
+      // for(int j=0; j<NBEACONS; j++){
+      //   Serial.print(" Beacon "); Serial.print(j);
+      //   Serial.print(" X: "); Serial.print(ekf.BeaconCluster[j].x);
+      //   Serial.print(" Y: "); Serial.print(ekf.BeaconCluster[j].y);
+      //   Serial.print(" Dist: "); Serial.print(ekf.BeaconCluster[j].dist);
+      //   Serial.print(" Angle: "); Serial.println(ekf.BeaconCluster[j].angle * 180 / M_PI);
+      // } 
 
+<<<<<<< HEAD
       
       //ekf.predict(robot.ve, robot.we, robot.dt);
       //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
+=======
+            //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
+>>>>>>> 894523e1cdd62271f82a7fb7df0718b8148749ff
       ekf.motionmodelEKF();
       
   
@@ -621,12 +635,20 @@ void loop() {
     serial_commands.send_command("Yst",ekf.XR(1));
     serial_commands.send_command("Thetast",ekf.XR(2));
 
+<<<<<<< HEAD
     // if (gotoXY_req)
     // {
       //gotoXY(0.125, 0.8, 3.14);
     // }
+=======
+
+    setPose(robot.xe, robot.ye, robot.thetae);
+    
+    followLine(-0.785, -0.57, -0.6, -0.2, 1.57);
+
+>>>>>>> 894523e1cdd62271f82a7fb7df0718b8148749ff
     robot.accelerationLimit(); 
-    robot.calcMotorsVoltage();
+    robot.calcMotorsVoltage(); 
     setMotorsPWM(robot.u1, robot.u2);
 
     
@@ -659,7 +681,7 @@ void loop() {
     serial_commands.send_command("gtx", robot.gotoX);
     serial_commands.send_command("gty", robot.gotoY);
     serial_commands.send_command("gtt", robot.gotoTheta);
-    serial_commands.send_command("gtm", (int)(robot.gotoXYState));
+    serial_commands.send_command("gtm", (int)(followLineState));
 
 
     serial_commands.send_command("sl", robot.solenoid_PWM);
