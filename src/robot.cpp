@@ -31,7 +31,7 @@ robot_t::robot_t()
 
   //Set initial state
   xe=-0.785;
-  ye=-0.57;
+  ye=-0.58;
   thetae=1.57;
 
 }

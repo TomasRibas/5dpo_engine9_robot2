@@ -1,7 +1,7 @@
 #include "followLine.h"
 
 // ----- Constants -----
-const double VEL_ANG_NOM = 1.57;
+const double VEL_ANG_NOM = 1;
 const double VEL_LIN_NOM = 0.2;
 const double W_DA        = 0.5;
 const double LinDeAccel  = 0.1;
@@ -57,52 +57,45 @@ void setPose(double xe, double ye, double thetae) {
 }
 
 void MotorVel(float v_req, float w_req) {
-    robot.setRobotVW(v_req, w_req);
+   robot.setRobotVW(v_req, w_req);
 }
 
-// void Dist2Line(double xi, double yi, double xf, double yf, double xr, double yr, double &kl, double &pix, double &piy)
-// {
-//     double ux = (xf - xi)/sqrt((xf - xi)*(xf - xi) + (yf - yi)*(yf - yi));
-//     double uy = (yf - yi)/sqrt((xf - xi)*(xf - xi) + (yf - yi)*(yf - yi));   
-//     kl = (xr*uy - yr*ux - xi*uy + yi*ux) / (ux*ux + uy*uy);
-//     pix = -kl*uy + xr;
-//     piy =  kl*ux + yr;
-// }
-
-void Dist2Line(double xi, double yi, double xf, double yf,
-               double xr, double yr,
-               double &signedDist, double &pix, double &piy)
+// Modified Dist2Line: also computes the projection parameter 't' along the line segment
+// t < 0 means robot is behind the start point
+// t > 1 means robot is past the end point
+// 0 <= t <= 1 means robot is alongside the segment
+void Dist2Line(double xi, double yi, double xf, double yf, double xr, double yr,
+               double &kl, double &pix, double &piy, double &t_param)
 {
-    const double vx = xf - xi;
-    const double vy = yf - yi;
-    const double wx = xr - xi;
-    const double wy = yr - yi;
-
-    const double vv = vx*vx + vy*vy;
-    if (vv < 1e-12) { // degenerate segment
-        pix = xi; piy = yi;
-        signedDist = 0.0;
+    double dx = xf - xi;
+    double dy = yf - yi;
+    double lineLen = std::sqrt(dx*dx + dy*dy);
+    
+    if (lineLen < 1e-6) {
+        kl = 0;
+        pix = xi;
+        piy = yi;
+        t_param = 0;
         return;
     }
-
-    // projection along the segment
-    double t = (wx*vx + wy*vy) / vv;
-
-    // clamp to [0,1] so closest point stays on the segment
-    if (t < 0.0) t = 0.0;
-    if (t > 1.0) t = 1.0;
-
-    pix = xi + t*vx;
-    piy = yi + t*vy;
-
-    const double dx = xr - pix;
-    const double dy = yr - piy;
-
-    // sign using cross product (segment direction x vector from start to robot)
-    const double cross = vx*wy - vy*wx;
-    const double side = (cross > 0) ? 1.0 : (cross < 0 ? -1.0 : 0.0);
-
-    signedDist = side * std::sqrt(dx*dx + dy*dy);
+    
+    double ux = dx / lineLen;
+    double uy = dy / lineLen;
+    
+    // kl is the signed perpendicular distance (original Pascal formula)
+    kl = (xr*uy - yr*ux - xi*uy + yi*ux);
+    
+    // Nearest point on the INFINITE line
+    pix = -kl*uy + xr;
+    piy =  kl*ux + yr;
+    
+    // t_param: projection parameter along line segment
+    t_param = ((pix - xi)*ux + (piy - yi)*uy) / lineLen;
+    
+    Serial.print(" kl: "); Serial.print(kl);
+    Serial.print(" pix: "); Serial.print(pix);
+    Serial.print(" piy: "); Serial.print(piy);
+    Serial.print(" t: "); Serial.print(t_param);
 }
 
 void gotoXY(double xf, double yf, double tf)
@@ -112,33 +105,44 @@ void gotoXY(double xf, double yf, double tf)
     const double error_dist      = std::sqrt((xf - x)*(xf - x) + (yf - y)*(yf - y));
     const double error_final_rot = NormalizeAngle(tf - theta);
 
-    const int rotateTo     = (error_ang > 0.0) ?  1 : -1;
-    const int rotateToFinal= (error_final_rot > 0.0) ?  1 : -1;
+    const int rotateTo      = (error_ang > 0.0) ?  1 : -1;
+    const int rotateToFinal = (error_final_rot > 0.0) ?  1 : -1;
 
+    // State transitions
     switch (state) {
         case Rotation:
-            if (std::abs(error_ang) < MAX_ETF) state = Go_Forward;
-            else if (error_dist < TOL_FINDIST) state = Final_Rot;
+            if (std::abs(error_ang) < MAX_ETF)
+                state = Go_Forward;
+            else if (error_dist < TOL_FINDIST)
+                state = Final_Rot;
             break;
 
         case Go_Forward:
-            if (error_dist < TOL_FINDIST) state = Final_Rot;
-            else if (error_dist < DIST_DA) state = De_Accel;
-            else if (std::abs(error_ang) > MAX_ETF + HIST_ETF) state = Rotation;
+            if (error_dist < TOL_FINDIST)
+                state = Final_Rot;
+            else if (error_dist < DIST_DA)
+                state = De_Accel;
+            else if (std::abs(error_ang) > MAX_ETF + HIST_ETF)
+                state = Rotation;
             break;
 
         case De_Accel:
-            if (error_dist < TOL_FINDIST) state = Final_Rot;
-            else if (error_dist > DIST_NEWPOSE) state = Rotation;
+            if (error_dist < TOL_FINDIST)
+                state = Final_Rot;
+            else if (error_dist > DIST_NEWPOSE)
+                state = Rotation;
             break;
 
         case Final_Rot:
-            if (std::abs(error_final_rot) < THETA_DA) state = DeAccel_Final_Rot;
-            else if (error_dist > DIST_NEWPOSE) state = Rotation;
+            if (std::abs(error_final_rot) < THETA_DA)
+                state = DeAccel_Final_Rot;
+            else if (error_dist > DIST_NEWPOSE)
+                state = Rotation;
             break;
 
         case DeAccel_Final_Rot:
-            if (std::abs(error_final_rot) < TOL_FINTHETA) state = StopState;
+            if (std::abs(error_final_rot) < TOL_FINTHETA)
+                state = StopState;
             else if ((error_dist > DIST_NEWPOSE) ||
                      (std::abs(error_final_rot) > THETA_NEWPOSE))
                 state = Rotation;
@@ -151,10 +155,11 @@ void gotoXY(double xf, double yf, double tf)
             break;
     }
 
+    // Outputs - ORIGINAL signs
     switch (state) {
         case Rotation:
             vlin  = 0.0;
-            omega = rotateTo * 0.1 * VEL_ANG_NOM;
+            omega = rotateTo * VEL_ANG_NOM;
             break;
 
         case Go_Forward:
@@ -169,7 +174,7 @@ void gotoXY(double xf, double yf, double tf)
 
         case Final_Rot:
             vlin  = 0.0;
-            omega = rotateToFinal * 0.1 * VEL_ANG_NOM;
+            omega = rotateToFinal * VEL_ANG_NOM;
             break;
 
         case DeAccel_Final_Rot:
@@ -189,26 +194,50 @@ void gotoXY(double xf, double yf, double tf)
 
 void followLine(double xi, double yi, double xf, double yf, double tf)
 {
+    // tr = angle of the line
     double tr = std::atan2(yf - yi, xf - xi);
     double error_ang  = NormalizeAngle(tr - theta);
     double error_dist = std::sqrt((xf - x)*(xf - x) + (yf - y)*(yf - y));
 
-    Dist2Line(xi, yi, xf, yf, x, y, kl, nearX, nearY);
+    // Get distance to line, nearest point, AND projection parameter
+    double t_param;
+    Dist2Line(xi, yi, xf, yf, x, y, kl, nearX, nearY, t_param);
+
     testSideLine = sign(kl);
     distLine     = std::abs(kl);
+    
+    // Check if robot is behind start point (t < 0)
+    bool behindStart = (t_param < 0.0);
+    
+    // If behind the start point, set nearX/nearY to be the start point
+    if (behindStart) {
+        nearX = xi;
+        nearY = yi;
+        distLine = std::sqrt((x - xi)*(x - xi) + (y - yi)*(y - yi));
+    }
 
+    Serial.print(" distLine: "); Serial.print(distLine);
+    Serial.print(" error_dist: "); Serial.print(error_dist);
+    Serial.print(" error_ang: "); Serial.print(Deg(error_ang));
+    Serial.print(" t_param: "); Serial.print(t_param);
+    Serial.print(" State: "); Serial.println(followLineState);
+
+    // State transitions
     switch (followLineState) {
         case Follow_Line:
-            if (error_dist < 10.0 * TOL_FINDIST) {
-                followLineState = Approaching;
-            } else if (distLine > DIST_NEWLINE) {
+            if (behindStart || distLine > DIST_NEWLINE) {
                 followLineState = Goto_NearXY;
+                state = Rotation;
+            } else if (error_dist < 10.0 * TOL_FINDIST) {
+                followLineState = Approaching;
             }
             break;
 
         case Approaching:
-            if (error_dist < TOL_FINDIST)
+            if (error_dist < TOL_FINDIST) {
                 followLineState = Final_Rot_FL;
+                state = Rotation;
+            }
             break;
 
         case Final_Rot_FL:
@@ -217,16 +246,24 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
             break;
 
         case Stop_FL:
-            if (distLine > DIST_NEWLINE)
-                followLineState =Goto_NearXY;
+            if (distLine > DIST_NEWLINE) {
+                followLineState = Goto_NearXY;
+                state = Rotation;
+            }
             break;
 
         case Goto_NearXY:
-            if (distLine < DIST_NEARLINE)
+            if (distLine < DIST_NEARLINE && !behindStart) {
                 followLineState = Follow_Line;
+            }
+            if (behindStart && state == StopState) {
+                followLineState = Follow_Line;
+                state = Rotation;
+            }
             break;
     }
 
+    // Outputs - ORIGINAL signs for omega
     switch (followLineState) {
         case Follow_Line:
             vlin  = VEL_LIN_NOM;
@@ -245,7 +282,7 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
             break;
 
         case Stop_FL:
-            vlin = 0.0;
+            vlin  = 0.0;
             omega = 0.0;
             MotorVel((float)vlin, (float)omega);
             break;
