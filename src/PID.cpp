@@ -7,15 +7,15 @@ PID_t::PID_t()
   
   // Some typical values
   pars.Kfd = 0;
-  pars.Kf = 0.15;
+  pars.Kf = 0.4;
   pars.Kc = 0.7;
-  pars.Ki = 2.25;
+  pars.Ki = 1.5;
   pars.Kd = 0;
-  pars.dt = 0.04;
+  pars.dt = 0.06;
   pars.dead_zone = 0.2;
 
-  m_max = 6;//12;
-  m_min = -6;//12;
+  m_max = 12;
+  m_min = -12;
 
   Se = 0;
   e = 0;
@@ -41,11 +41,11 @@ float PID_t::calc(float new_y_ref, float new_y)
   float b0 = 1.0f - a0;
   y_ref_filt = a0 * y_ref_filt + b0 * new_y_ref;
   
-  dy_ref = (y_ref_filt - y_ref) / ppars->dt;
-  y_ref = y_ref_filt;
+  // dy_ref = (y_ref_filt - y_ref) / ppars->dt;
+  // y_ref = y_ref_filt;
 
-  // dy_ref = (new_y_ref - y_ref) / ppars->dt;
-  // y_ref = new_y_ref;
+  dy_ref = (new_y_ref - y_ref) / ppars->dt;
+  y_ref = new_y_ref;
 
   last_e = e;
   e = y_ref - y;

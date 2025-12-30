@@ -120,39 +120,6 @@ void process_command(command_frame_t frame)
      state = (GoToXYState)(frame.value);;
      gotoXY_req=true;
 
-  } else if (frame.command_is("Xxr")) { 
-    ekf.XR(0) = frame.value;
-
-  }  else if (frame.command_is("Xyr")) { 
-    ekf.XR(1) = frame.value;
-    
-  }  else if (frame.command_is("Xtr")) { 
-    ekf.XR(2) = frame.value;
-    
-  }  else if (frame.command_is("Bx0")) { 
-    ekf.BeaconCluster[0].x = frame.value;
-    
-  } else if (frame.command_is("By0")) { 
-    ekf.BeaconCluster[0].y = frame.value;
-    
-  } else if (frame.command_is("Bx1")) { 
-    ekf.BeaconCluster[1].x = frame.value;
-    
-  } else if (frame.command_is("By1")) { 
-    ekf.BeaconCluster[1].y = frame.value;
-    
-  } else if (frame.command_is("Bx2")) { 
-    ekf.BeaconCluster[2].x = frame.value;
-    
-  } else if (frame.command_is("By2")) { 
-    ekf.BeaconCluster[2].y = frame.value;
-    
-  } else if (frame.command_is("Bx3")) { 
-    ekf.BeaconCluster[3].x = frame.value;
-    
-  } else if (frame.command_is("By3")) { 
-    ekf.BeaconCluster[3].y = frame.value;
-    
   } else if (frame.command_is("dt")) { 
      set_interval(frame.value);
 
@@ -464,7 +431,7 @@ void setup() {
 
 
   // All wheeel PID controllers share the same parameters
-  wheel_PID_pars.Kf = 0.15;
+  wheel_PID_pars.Kf = 0.35;
   wheel_PID_pars.Kc = 0.7;
   wheel_PID_pars.Ki = 2.25;
   wheel_PID_pars.Kd = 0;
@@ -619,49 +586,17 @@ void loop() {
 
       //serial_Beacons();
 
-<<<<<<< HEAD
-      // for(int j=0; j<NBEACONS; j++){
-      //   Serial.print(" Beacon "); Serial.print(j);
-      //   Serial.print(" X: "); Serial.print(ekf.BeaconCluster[j].x);
-      //   Serial.print(" Y: "); Serial.print(ekf.BeaconCluster[j].y);
-      //   Serial.print(" Dist: "); Serial.print(ekf.BeaconCluster[j].dist);
-      //   Serial.print(" Angle: "); Serial.println(ekf.BeaconCluster[j].angle * 180 / M_PI);
-      // } 
-
-<<<<<<< HEAD
-      
-      //ekf.predict(robot.ve, robot.we, robot.dt);
-      //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
-=======
-            //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
->>>>>>> 894523e1cdd62271f82a7fb7df0718b8148749ff
-      ekf.motionmodelEKF();
-=======
       //ekf.motionmodelEKF();
->>>>>>> 899359bc494aa56ce32fa2c352dafb5c569b2a82
       
 
-<<<<<<< HEAD
-    // if (gotoXY_req)
-    // {
-      //gotoXY(0.125, 0.8, 3.14);
-    // }
-=======
 
       setPose(robot.xe, robot.ye, robot.thetae);
       printOdometry();
       followLine(-0.785, -0.50, -0.6, -0.2, 1.57);
 
-<<<<<<< HEAD
->>>>>>> 894523e1cdd62271f82a7fb7df0718b8148749ff
-    robot.accelerationLimit(); 
-    robot.calcMotorsVoltage(); 
-    setMotorsPWM(robot.u1, robot.u2);
-=======
       robot.accelerationLimit(); 
       robot.calcMotorsVoltage(); 
       setMotorsPWM(robot.u1, robot.u2);
->>>>>>> 899359bc494aa56ce32fa2c352dafb5c569b2a82
 
       
 
