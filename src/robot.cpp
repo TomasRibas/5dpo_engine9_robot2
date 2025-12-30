@@ -48,7 +48,8 @@ void robot_t::odometry(void)
 
   // Estimate robot speed
   ve = (v1e + v2e) / 2.0;
-  we = (v1e - v2e) / wheel_dist;
+  //we = (v1e - v2e) / wheel_dist;
+  we = (v2e - v1e) / wheel_dist;
   
   // Estimate the distance and the turn angle
   ds = ve * dt;
@@ -99,9 +100,12 @@ void robot_t::calcMotorsVoltage(void)
     
 
   } else if (control_mode == cm_kinematics) {
-    v1ref = v + w * wheel_dist / 2;
-    v2ref = v - w * wheel_dist / 2; 
-    
+    // v1ref = v + w * wheel_dist / 2;
+    // v2ref = v - w * wheel_dist / 2;
+    //:
+    v1ref = v - w * wheel_dist / 2;
+    v2ref = v + w * wheel_dist / 2;
+        
     w1ref = v1ref / wheel_radius;
     w2ref = v2ref / wheel_radius;    
   }

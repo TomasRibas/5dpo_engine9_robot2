@@ -328,6 +328,7 @@ void printOdometry()
   Serial.print(robot.ye);
   Serial.print(" Theta:");
   Serial.print((robot.thetae*180)/PI);
+  Serial.println("");
 }
 
 void printTof()
@@ -384,6 +385,75 @@ void serial_Beacons(){
   serial_commands.send_command("Bt5", ekf.BeaconCluster[5].angle);
   serial_commands.send_command("Bn5", ekf.BeaconCluster[5].n);
 }
+
+void serial_ComRobot(){
+  // Debug information
+  
+  serial_commands.send_command("Xst",ekf.XR(0));
+  serial_commands.send_command("Yst",ekf.XR(1));
+  serial_commands.send_command("Thetast",ekf.XR(2));
+
+  serial_commands.send_command("u1", robot.u1);
+  serial_commands.send_command("u2", robot.u2);
+
+  serial_commands.send_command("e1", robot.enc1);
+  serial_commands.send_command("e2", robot.enc2);
+
+  serial_commands.send_command("Vbat", robot.battery_voltage);
+
+  serial_commands.send_command("ve", robot.ve);
+  serial_commands.send_command("we", robot.we);
+
+  serial_commands.send_command("w1", robot.w1e);
+  serial_commands.send_command("w2", robot.w2e);
+
+  serial_commands.send_command("w1req", robot.w1_req);
+  serial_commands.send_command("w2req", robot.w2_req);
+
+  serial_commands.send_command("kc", wheel_PID_pars.Kc);
+  serial_commands.send_command("ki", wheel_PID_pars.Ki);
+  serial_commands.send_command("kd", wheel_PID_pars.Kd);
+  serial_commands.send_command("kf", wheel_PID_pars.Kf);
+  serial_commands.send_command("kfd", wheel_PID_pars.Kfd);
+
+  serial_commands.send_command("gtx", robot.gotoX);
+  serial_commands.send_command("gty", robot.gotoY);
+  serial_commands.send_command("gtt", robot.gotoTheta);
+  serial_commands.send_command("gtm", (int)(followLineState));
+
+
+  serial_commands.send_command("sl", robot.solenoid_PWM);
+
+  serial_commands.send_command("is", robot.i_sense);
+  serial_commands.send_command("us", robot.u_sense);
+
+  serial_commands.send_command("mode", robot.control_mode);
+
+  serial_commands.send_command("IP", WiFi.localIP().toString().c_str());
+
+  serial_commands.send_command("m1", robot.PWM_1);
+  serial_commands.send_command("m2", robot.PWM_2);
+
+  serial_commands.send_command("xe", robot.xe);
+  serial_commands.send_command("ye", robot.ye);
+  serial_commands.send_command("te", robot.thetae);
+
+  pars_list.send_sparse_commands(serial_commands);
+
+  Serial.print(" cmd: ");
+  Serial.print(serial_commands.frame.command);
+  Serial.print("; ");
+    
+  //debug = serial_commands.out_count;
+  serial_commands.send_command("dbg", 5); 
+  serial_commands.send_command("loop", micros() - interval);  
+    
+  serial_commands.flush();   
+  Serial.println();
+
+  http_ota.handle();
+}
+
 
 void setup() {
 
@@ -561,17 +631,13 @@ void loop() {
           ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001;
         }
         scanDone = true; //in meters
-
       }
     }
       
-      
-  
   currentMicros = micros();
   if(currentMicros - previousMicros >= interval){
      previousMicros = currentMicros;
 
-     
     if(scanDone){
 
      read_PIO_encoders();
@@ -580,91 +646,25 @@ void loop() {
       
       robot.odometry(); 
 
-      //ekf.predict(robot.ve, robot.we, robot.dt); //robot.dt??
+      // ekf.predict(robot.ve, robot.we, robot.dt); //robot.dt??
 
-      //ekf.phaseAV();
+      // ekf.phaseAV();
 
-      //serial_Beacons();
+      // serial_Beacons();
 
-      //ekf.motionmodelEKF();
-      
-
+      // ekf.motionmodelEKF();
 
       setPose(robot.xe, robot.ye, robot.thetae);
       printOdometry();
       followLine(-0.785, -0.50, -0.6, -0.2, 1.57);
+      //robot.setRobotVW(0, 0.5);
 
       robot.accelerationLimit(); 
       robot.calcMotorsVoltage(); 
       setMotorsPWM(robot.u1, robot.u2);
 
-      
+      //serial_ComRobot();
 
-      // Debug information
-      
-      // serial_commands.send_command("Xst",ekf.XR(0));
-      // serial_commands.send_command("Yst",ekf.XR(1));
-      // serial_commands.send_command("Thetast",ekf.XR(2));
-
-      // serial_commands.send_command("u1", robot.u1);
-      // serial_commands.send_command("u2", robot.u2);
-
-      // serial_commands.send_command("e1", robot.enc1);
-      // serial_commands.send_command("e2", robot.enc2);
-
-      // serial_commands.send_command("Vbat", robot.battery_voltage);
-
-      // serial_commands.send_command("ve", robot.ve);
-      // serial_commands.send_command("we", robot.we);
-
-      // serial_commands.send_command("w1", robot.w1e);
-      // serial_commands.send_command("w2", robot.w2e);
-
-      // serial_commands.send_command("w1req", robot.w1_req);
-      // serial_commands.send_command("w2req", robot.w2_req);
-
-      // serial_commands.send_command("kc", wheel_PID_pars.Kc);
-      // serial_commands.send_command("ki", wheel_PID_pars.Ki);
-      // serial_commands.send_command("kd", wheel_PID_pars.Kd);
-      // serial_commands.send_command("kf", wheel_PID_pars.Kf);
-      // serial_commands.send_command("kfd", wheel_PID_pars.Kfd);
-
-      // serial_commands.send_command("gtx", robot.gotoX);
-      // serial_commands.send_command("gty", robot.gotoY);
-      // serial_commands.send_command("gtt", robot.gotoTheta);
-      // serial_commands.send_command("gtm", (int)(followLineState));
-
-
-      // serial_commands.send_command("sl", robot.solenoid_PWM);
-
-      // serial_commands.send_command("is", robot.i_sense);
-      // serial_commands.send_command("us", robot.u_sense);
-
-      // serial_commands.send_command("mode", robot.control_mode);
-
-      // serial_commands.send_command("IP", WiFi.localIP().toString().c_str());
-
-      // serial_commands.send_command("m1", robot.PWM_1);
-      // serial_commands.send_command("m2", robot.PWM_2);
-
-      // serial_commands.send_command("xe", robot.xe);
-      // serial_commands.send_command("ye", robot.ye);
-      // serial_commands.send_command("te", robot.thetae);
-
-      // pars_list.send_sparse_commands(serial_commands);
-
-      // Serial.print(" cmd: ");
-      // Serial.print(serial_commands.frame.command);
-      // Serial.print("; ");
-        
-      // //debug = serial_commands.out_count;
-      // serial_commands.send_command("dbg", 5); 
-      // serial_commands.send_command("loop", micros() - interval);  
-        
-      serial_commands.flush();   
-      Serial.println();
-
-      http_ota.handle();
     }
     else{
       Serial.println("No scan data");}
