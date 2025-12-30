@@ -8,10 +8,7 @@
 #include "robot.h"
 #include "trajectories.h"
 
-#include "lds_driver.hpp"
 #include "followLine.h"
-
-//FollowLineController fl;
 
 TOF stof;
 
@@ -19,16 +16,12 @@ unsigned long interval;
 unsigned long currentMicros, previousMicros;
 char received;
 
-// Create after optional Serial1 pin mapping, so use a pointer:
-//lds::LFCDLaser* lidar = nullptr;
-
 //void init_control(robot_t& robot);
 //void control(robot_t& robot);
 
 PID_pars_t wheel_PID_pars;
 ////////////////////LIDAR///////////////////////
 #include "lds.h"
-
 
 
 #define DISTANCE_MAX    1000      // 100.0 cm 
@@ -548,15 +541,6 @@ void setup() {
   initializeMotors();
 
   ldsInit(&lds_scan);
-
-  //delay(100);
-  //Serial1.print("b");
-  //lidar = new lds::LFCDLaser(230400);  // ctor signature per new header :contentReference[oaicite:3]{index=3}
-
-  // Setup motor pin
-  //analogWriteFreq(10000); // 10 kHz PWM
-  //analogWriteRange(255);
-   // 50% duty cycle
 
 
   Wire.setSDA(4);
