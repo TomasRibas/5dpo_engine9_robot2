@@ -39,7 +39,7 @@ lds_scan_t lds_scan;
 #include "utils.h"
 #include "ekf.h"
 
-EKF ekf;
+//EKF ekf;
 
 /////////////////////////GCHANNELS///////////////////////////
 
@@ -380,6 +380,43 @@ void serial_write(const char *buffer, size_t size)
   } 
 }
 
+void serial_Beacons(){
+  serial_commands.send_command("Bx0", ekf.BeaconCluster[0].x);
+  serial_commands.send_command("By0", ekf.BeaconCluster[0].y);
+  serial_commands.send_command("Bd0", ekf.BeaconCluster[0].dist);
+  serial_commands.send_command("Bt0", ekf.BeaconCluster[0].angle);
+  serial_commands.send_command("Bn0", ekf.BeaconCluster[0].n);
+
+  serial_commands.send_command("Bx1", ekf.BeaconCluster[1].x);
+  serial_commands.send_command("By1", ekf.BeaconCluster[1].y);
+  serial_commands.send_command("Bd1", ekf.BeaconCluster[1].dist);
+  serial_commands.send_command("Bt1", ekf.BeaconCluster[1].angle);
+  serial_commands.send_command("Bn1", ekf.BeaconCluster[1].n);
+
+  serial_commands.send_command("Bx2", ekf.BeaconCluster[2].x);
+  serial_commands.send_command("By2", ekf.BeaconCluster[2].y);
+  serial_commands.send_command("Bd2", ekf.BeaconCluster[2].dist);
+  serial_commands.send_command("Bt2", ekf.BeaconCluster[2].angle);
+  serial_commands.send_command("Bn2", ekf.BeaconCluster[2].n);
+
+  serial_commands.send_command("Bx3", ekf.BeaconCluster[3].x);
+  serial_commands.send_command("By3", ekf.BeaconCluster[3].y);
+  serial_commands.send_command("Bd3", ekf.BeaconCluster[3].dist);
+  serial_commands.send_command("Bt3", ekf.BeaconCluster[3].angle);
+  serial_commands.send_command("Bn3", ekf.BeaconCluster[3].n);
+
+  serial_commands.send_command("Bx4", ekf.BeaconCluster[4].x);
+  serial_commands.send_command("By4", ekf.BeaconCluster[4].y);
+  serial_commands.send_command("Bd4", ekf.BeaconCluster[4].dist);
+  serial_commands.send_command("Bt4", ekf.BeaconCluster[4].angle);
+  serial_commands.send_command("Bn4", ekf.BeaconCluster[4].n);
+
+  serial_commands.send_command("Bx5", ekf.BeaconCluster[5].x);
+  serial_commands.send_command("By5", ekf.BeaconCluster[5].y);
+  serial_commands.send_command("Bd5", ekf.BeaconCluster[5].dist);
+  serial_commands.send_command("Bt5", ekf.BeaconCluster[5].angle);
+  serial_commands.send_command("Bn5", ekf.BeaconCluster[5].n);
+}
 
 void setup() {
 
@@ -514,21 +551,6 @@ void loop() {
     robot.battery_voltage = 1e-3 * ((b >> 1) * 50 + 4800);
   }
 
-  /*if (Serial1.available()) {
-    int b = Serial1.read();
-    if (b >= 0) {
-      Serial.print("0x"); Serial.println(b, HEX);
-    }
-  }*/
-  //lidar->poll();  // prints inside driver (no distance array exposed) :contentReference[oaicite:4]{index=4}
-  /*if(Serial1.available() > 0)
-  {
-    if (ldsUpdate(&lds_scan, Serial1.read()) == true)
-    {
-      //drawPoint();
-    }
-  }*/
-
   if (WiFi.connected() && !ip_on){
     // Connection established
     serial_commands.send_command("msg", (String("Pico W is connected to WiFi network with SSID ") + WiFi.SSID()).c_str());
@@ -563,15 +585,16 @@ void loop() {
   if(Serial1.available() > 0)
     {
       if (ldsUpdate(&lds_scan, Serial1.read())) {
-      // Complete scan received
-      // Now you can safely print or process the full scan
-      scanDone = false;
+        // Complete scan received
+        // Now you can safely print or process the full scan
+        scanDone = false;
       
-      // Optional: Print complete scan data here instead
+        // Optional: Print complete scan data here instead
         for(int i=0; i<360; i++) {
           ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001;
-          scanDone = true; //in meters
         }
+        scanDone = true; //in meters
+
       }
     }
       
@@ -589,29 +612,14 @@ void loop() {
      stof.calculateTOF();
       
       robot.odometry(); 
-      ekf.predict(robot.ve, robot.we, robot.dt); //robot.dt??
-      ekf.phaseAV();
-          //BEACON CLUSTERS 0-3
-      serial_commands.send_command("Bx0", ekf.BeaconCluster[0].x);
-      serial_commands.send_command("By0", ekf.BeaconCluster[0].y);
-      serial_commands.send_command("Bd0", ekf.BeaconCluster[0].dist);
-      serial_commands.send_command("Bt0", ekf.BeaconCluster[0].angle);
 
-      serial_commands.send_command("Bx1", ekf.BeaconCluster[1].x);
-      serial_commands.send_command("By1", ekf.BeaconCluster[1].y);
-      serial_commands.send_command("Bd1", ekf.BeaconCluster[1].dist);
-      serial_commands.send_command("Bt1", ekf.BeaconCluster[1].angle);
+      //ekf.predict(robot.ve, robot.we, robot.dt); //robot.dt??
 
-      serial_commands.send_command("Bx2", ekf.BeaconCluster[2].x);
-      serial_commands.send_command("By2", ekf.BeaconCluster[2].y);
-      serial_commands.send_command("Bd2", ekf.BeaconCluster[2].dist);
-      serial_commands.send_command("Bt2", ekf.BeaconCluster[2].angle);
+      //ekf.phaseAV();
 
-      serial_commands.send_command("Bx3", ekf.BeaconCluster[3].x);
-      serial_commands.send_command("By3", ekf.BeaconCluster[3].y);
-      serial_commands.send_command("Bd3", ekf.BeaconCluster[3].dist);
-      serial_commands.send_command("Bt3", ekf.BeaconCluster[3].angle);
+      //serial_Beacons();
 
+<<<<<<< HEAD
       // for(int j=0; j<NBEACONS; j++){
       //   Serial.print(" Beacon "); Serial.print(j);
       //   Serial.print(" X: "); Serial.print(ekf.BeaconCluster[j].x);
@@ -628,12 +636,10 @@ void loop() {
             //ekf.updateXR(robot.ve, robot.thetae, ekf.dt);
 >>>>>>> 894523e1cdd62271f82a7fb7df0718b8148749ff
       ekf.motionmodelEKF();
+=======
+      //ekf.motionmodelEKF();
+>>>>>>> 899359bc494aa56ce32fa2c352dafb5c569b2a82
       
-  
-
-    serial_commands.send_command("Xst",ekf.XR(0));
-    serial_commands.send_command("Yst",ekf.XR(1));
-    serial_commands.send_command("Thetast",ekf.XR(2));
 
 <<<<<<< HEAD
     // if (gotoXY_req)
@@ -642,78 +648,88 @@ void loop() {
     // }
 =======
 
-    setPose(robot.xe, robot.ye, robot.thetae);
-    
-    followLine(-0.785, -0.57, -0.6, -0.2, 1.57);
+      setPose(robot.xe, robot.ye, robot.thetae);
+      printOdometry();
+      followLine(-0.785, -0.50, -0.6, -0.2, 1.57);
 
+<<<<<<< HEAD
 >>>>>>> 894523e1cdd62271f82a7fb7df0718b8148749ff
     robot.accelerationLimit(); 
     robot.calcMotorsVoltage(); 
     setMotorsPWM(robot.u1, robot.u2);
+=======
+      robot.accelerationLimit(); 
+      robot.calcMotorsVoltage(); 
+      setMotorsPWM(robot.u1, robot.u2);
+>>>>>>> 899359bc494aa56ce32fa2c352dafb5c569b2a82
 
-    
-    // robot.calcMotorsVoltage();
-    // setMotorsPWM(robot.u1, robot.u2);
-    // Debug information
-    serial_commands.send_command("u1", robot.u1);
-    serial_commands.send_command("u2", robot.u2);
-
-    serial_commands.send_command("e1", robot.enc1);
-    serial_commands.send_command("e2", robot.enc2);
-
-    serial_commands.send_command("Vbat", robot.battery_voltage);
-
-    serial_commands.send_command("ve", robot.ve);
-    serial_commands.send_command("we", robot.we);
-
-    serial_commands.send_command("w1", robot.w1e);
-    serial_commands.send_command("w2", robot.w2e);
-
-    serial_commands.send_command("w1req", robot.w1_req);
-    serial_commands.send_command("w2req", robot.w2_req);
-
-    serial_commands.send_command("kc", wheel_PID_pars.Kc);
-    serial_commands.send_command("ki", wheel_PID_pars.Ki);
-    serial_commands.send_command("kd", wheel_PID_pars.Kd);
-    serial_commands.send_command("kf", wheel_PID_pars.Kf);
-    serial_commands.send_command("kfd", wheel_PID_pars.Kfd);
-
-    serial_commands.send_command("gtx", robot.gotoX);
-    serial_commands.send_command("gty", robot.gotoY);
-    serial_commands.send_command("gtt", robot.gotoTheta);
-    serial_commands.send_command("gtm", (int)(followLineState));
-
-
-    serial_commands.send_command("sl", robot.solenoid_PWM);
-
-    serial_commands.send_command("is", robot.i_sense);
-    serial_commands.send_command("us", robot.u_sense);
-
-    serial_commands.send_command("mode", robot.control_mode);
-
-    serial_commands.send_command("IP", WiFi.localIP().toString().c_str());
-
-    serial_commands.send_command("m1", robot.PWM_1);
-    serial_commands.send_command("m2", robot.PWM_2);
-
-    serial_commands.send_command("xe", robot.xe);
-    serial_commands.send_command("ye", robot.ye);
-    serial_commands.send_command("te", robot.thetae);
-
-    pars_list.send_sparse_commands(serial_commands);
-
-    Serial.print(" cmd: ");
-    Serial.print(serial_commands.frame.command);
-    Serial.print("; ");
       
-    //debug = serial_commands.out_count;
-    serial_commands.send_command("dbg", 5); 
-    serial_commands.send_command("loop", micros() - interval);  
-     
-    serial_commands.flush();   
-    Serial.println();
 
-    http_ota.handle();
+      // Debug information
+      
+      // serial_commands.send_command("Xst",ekf.XR(0));
+      // serial_commands.send_command("Yst",ekf.XR(1));
+      // serial_commands.send_command("Thetast",ekf.XR(2));
+
+      // serial_commands.send_command("u1", robot.u1);
+      // serial_commands.send_command("u2", robot.u2);
+
+      // serial_commands.send_command("e1", robot.enc1);
+      // serial_commands.send_command("e2", robot.enc2);
+
+      // serial_commands.send_command("Vbat", robot.battery_voltage);
+
+      // serial_commands.send_command("ve", robot.ve);
+      // serial_commands.send_command("we", robot.we);
+
+      // serial_commands.send_command("w1", robot.w1e);
+      // serial_commands.send_command("w2", robot.w2e);
+
+      // serial_commands.send_command("w1req", robot.w1_req);
+      // serial_commands.send_command("w2req", robot.w2_req);
+
+      // serial_commands.send_command("kc", wheel_PID_pars.Kc);
+      // serial_commands.send_command("ki", wheel_PID_pars.Ki);
+      // serial_commands.send_command("kd", wheel_PID_pars.Kd);
+      // serial_commands.send_command("kf", wheel_PID_pars.Kf);
+      // serial_commands.send_command("kfd", wheel_PID_pars.Kfd);
+
+      // serial_commands.send_command("gtx", robot.gotoX);
+      // serial_commands.send_command("gty", robot.gotoY);
+      // serial_commands.send_command("gtt", robot.gotoTheta);
+      // serial_commands.send_command("gtm", (int)(followLineState));
+
+
+      // serial_commands.send_command("sl", robot.solenoid_PWM);
+
+      // serial_commands.send_command("is", robot.i_sense);
+      // serial_commands.send_command("us", robot.u_sense);
+
+      // serial_commands.send_command("mode", robot.control_mode);
+
+      // serial_commands.send_command("IP", WiFi.localIP().toString().c_str());
+
+      // serial_commands.send_command("m1", robot.PWM_1);
+      // serial_commands.send_command("m2", robot.PWM_2);
+
+      // serial_commands.send_command("xe", robot.xe);
+      // serial_commands.send_command("ye", robot.ye);
+      // serial_commands.send_command("te", robot.thetae);
+
+      // pars_list.send_sparse_commands(serial_commands);
+
+      // Serial.print(" cmd: ");
+      // Serial.print(serial_commands.frame.command);
+      // Serial.print("; ");
+        
+      // //debug = serial_commands.out_count;
+      // serial_commands.send_command("dbg", 5); 
+      // serial_commands.send_command("loop", micros() - interval);  
+        
+      serial_commands.flush();   
+      Serial.println();
+
+      http_ota.handle();
     }
     else{
       Serial.println("No scan data");}
