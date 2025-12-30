@@ -57,7 +57,7 @@ EKF::EKF() {
 
     // Set initial robot state
     XR(0) = -0.785;
-    XR(1) = -0.58;
+    XR(1) = -0.57;
     XR(2) = 1.57;   // theta (rad) - facing +Y direction
 
     // Initialize state transition Jacobian [3x3]
@@ -179,17 +179,17 @@ void EKF::updateEKF(int nBeacon) {
     innovation(1) = normalizeAngle(Z(1) - expectedAngle);
     
     // Debug output
-    Serial.print("Beacon "); Serial.print(nBeacon);
-    Serial.print(" | Z_dist: "); Serial.print(Z(0), 4);
-    Serial.print(" exp: "); Serial.print(expectedDist, 4);
-    Serial.print(" innov: "); Serial.print(innovation(0), 4);
-    Serial.print(" | Z_ang: "); Serial.print(Z(1) * 180.0 / PI, 1);
-    Serial.print(" exp: "); Serial.print(expectedAngle * 180.0 / PI, 1);
-    Serial.print(" innov: "); Serial.println(innovation(1) * 180.0 / PI, 1);
+    // Serial.print("Beacon "); Serial.print(nBeacon);
+    // Serial.print(" | Z_dist: "); Serial.print(Z(0), 4);
+    // Serial.print(" exp: "); Serial.print(expectedDist, 4);
+    // Serial.print(" innov: "); Serial.print(innovation(0), 4);
+    // Serial.print(" | Z_ang: "); Serial.print(Z(1) * 180.0 / PI, 1);
+    // Serial.print(" exp: "); Serial.print(expectedAngle * 180.0 / PI, 1);
+    // Serial.print(" innov: "); Serial.println(innovation(1) * 180.0 / PI, 1);
     
     // Outlier rejection - skip update if innovation is too large
     if (!isInnovationValid(innovation(0), innovation(1))) {
-        Serial.println("  -> Innovation too large, skipping update");
+        //Serial.println("  -> Innovation too large, skipping update");
         return;
     }
 
@@ -236,9 +236,9 @@ void EKF::updateEKF(int nBeacon) {
     // CRITICAL: Normalize angle after update
     XR(2) = normalizeAngle(XR(2));
     
-    Serial.print("  -> Updated state: x="); Serial.print(XR(0), 4);
-    Serial.print(" y="); Serial.print(XR(1), 4);
-    Serial.print(" th="); Serial.println(XR(2) * 180.0 / PI, 1);
+    // Serial.print("  -> Updated state: x="); Serial.print(XR(0), 4);
+    // Serial.print(" y="); Serial.print(XR(1), 4);
+    // Serial.print(" th="); Serial.println(XR(2) * 180.0 / PI, 1);
 }
 
 bool EKF::isInnovationValid(double distInnovation, double angleInnovation) {
@@ -324,7 +324,7 @@ void EKF::phaseAV() {
         if(BeaconCluster[j].n >=  1) {
             double cluster_dx = BeaconCluster[j].x - XR(0);
             double cluster_dy = BeaconCluster[j].y - XR(1);
-            BeaconCluster[j].dist = sqrt(cluster_dx * cluster_dx + cluster_dy * cluster_dy)+ 0.0375; //+ 0.0375; // offset pra centro do poste
+            BeaconCluster[j].dist = sqrt(cluster_dx * cluster_dx + cluster_dy * cluster_dy)+ 0.042; //+ 0.0375; // offset pra centro do poste
             BeaconCluster[j].angle = normalizeAngle(atan2(cluster_dy, cluster_dx) - XR(2));
         }
     }

@@ -105,17 +105,19 @@ bool ldsUpdate(lds_scan_t *p_scan, uint8_t data_in)
           p_scan->data[index].range     = (p_data[3]<<8) | p_data[2];
           p_scan->data[index].reserved  = (p_data[5]<<8) | p_data[4];
           
-          // Serial.print(index);                          // angle index
-          // Serial.print(" ");
+          //Serial.print(p_scan->packet_index );                          // angle index
+          //Serial.print(" ");
           // Serial.print(p_scan->data[index].range);     // distance
           // Serial.print(" ");
           // Serial.print(p_scan->data[index].intensity); // intensity
-          // Serial.println();
+          //Serial.println();
 
         }
 
         if (p_scan->packet_index == 60-1)
         {
+          //Serial.print("AAAAAAAAAAAAAA");
+          //Serial.println();
           p_scan->motor_speed = p_scan->motor_speed_sum / 60; 
           ret = true;
         }

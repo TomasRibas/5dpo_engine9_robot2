@@ -27,7 +27,7 @@
 #define sensA_stddev 0.009 // radians
 
 // Search window for beacon association (rays on each side)
-#define deltaRay 15
+#define deltaRay 22
 
 // EKF dimensions
 #define NStates 3   // x, y, theta

@@ -12,11 +12,11 @@ const double GAIN_FWD     = 0.02;
 const double DIST_DA      = 0.05;
 const double GAIN_DA      = 0.1;//0.0005;
 
-const double TOL_FINDIST  = 0.02;
+const double TOL_FINDIST  = 0.05;//0.02;
 const double DIST_NEWPOSE = 0.5;
 const double THETA_NEWPOSE = 15 * M_PI/180.0;
 const double THETA_DA      = 15 * M_PI/180.0;
-const double TOL_FINTHETA  =  1 * M_PI/180.0;
+const double TOL_FINTHETA  = 1 *  M_PI/180.0;
 
 const double DIST_NEWLINE  = 0.1;
 const double DIST_NEARLINE = 0.05;
