@@ -8,18 +8,20 @@ const double LinDeAccel  = 0.1;
 
 const double MAX_ETF      = 10 * M_PI/180.0;
 const double HIST_ETF     =  5 * M_PI/180.0;
-const double GAIN_FWD     = 0.02;
+const double GAIN_FWD     = 0.1;//0.02;
 const double DIST_DA      = 0.05;
 const double GAIN_DA      = 0.1;//0.0005;
 
 const double TOL_FINDIST  = 0.05;//0.02;
 const double DIST_NEWPOSE = 0.5;
 const double THETA_NEWPOSE = 15 * M_PI/180.0;
-const double THETA_DA      = 15 * M_PI/180.0;
+//const double THETA_DA      = 15 * M_PI/180.0;
+const double THETA_DA      = 5 * M_PI/180.0;
 const double TOL_FINTHETA  = 1 *  M_PI/180.0;
 
 const double DIST_NEWLINE  = 0.1;
-const double DIST_NEARLINE = 0.05;
+// const double DIST_NEARLINE = 0.05;
+const double DIST_NEARLINE = 0.03;
 
 // ----- Global variables (like your goToXY example) -----
 double x , y , theta; // Initial estimated pose
@@ -267,13 +269,13 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
     switch (followLineState) {
         case Follow_Line:
             vlin  = VEL_LIN_NOM;
-            omega = 0.3 * testSideLine * distLine + 0.15 * error_ang * VEL_ANG_NOM;
+            omega = /*0.5*/0.5 * testSideLine * distLine + 0.15 * error_ang * VEL_ANG_NOM;
             MotorVel((float)vlin, (float)omega);
             break;
 
         case Approaching:
             vlin  = LinDeAccel;
-            omega = 0.3 * testSideLine * distLine + 0.15 * error_ang * VEL_ANG_NOM;
+            omega = /*0.5*/0.5 * testSideLine * distLine + 0.15 * error_ang * VEL_ANG_NOM;
             MotorVel((float)vlin, (float)omega);
             break;
 

@@ -379,6 +379,29 @@ void serial_Beacons(){
   serial_commands.send_command("Bn5", ekf.BeaconCluster[5].n);
 }
 
+void Spin360(){
+  static bool spin_started = false;
+  static uint32_t spin_t0_ms = 0;
+
+  const float SPIN_TARGET = TWO_PI;   // 360º in rad
+  const float SPIN_W      = 1.0f;     // rad/s (pick what you want)
+  const float SPIN_TOL    = 0.0f;    // ~1.7º tolerance
+  const uint32_t TIMEOUT_MS = 12000;  // safety stop
+
+  if (!spin_started) {
+    spin_started = true;
+    robot.rel_theta = 0.0f;           // reset accumulated rotation
+    spin_t0_ms = millis();
+  }
+
+  // keep spinning until we hit ~360º or timeout
+  if (fabs(robot.rel_theta) < (SPIN_TARGET - SPIN_TOL) && (millis() - spin_t0_ms) < TIMEOUT_MS) {
+    robot.setRobotVW(0.0f, SPIN_W);
+  } else {
+    robot.setRobotVW(0.0f, 0.0f);
+  }
+}
+
 void serial_ComRobot(){
   // Debug information
   
@@ -617,7 +640,6 @@ void loop() {
   if(currentMicros - previousMicros >= interval){
     previousMicros = currentMicros;
 
-    //Serial.print(ldsUpdate(&lds_scan, Serial1.read())) ;
     read_PIO_encoders();
     //Serial.println(lds_scan.motor_speed);
     //stof.calculateTOF();
@@ -629,7 +651,6 @@ void loop() {
     if(scanDone){
       scanDone = false;
 
-    
       ekf.phaseAV();
 
       serial_Beacons();
@@ -642,7 +663,7 @@ void loop() {
 
     setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));
     //setPose(robot.xe, robot.ye, robot.thetae);
-    followLine(-0.785, -0.50, -0.6, -0.2, 1.57);
+    followLine(-0.785, -0.50, -0.695, 0.355, PI/2);
 
     robot.accelerationLimit(); 
     robot.calcMotorsVoltage(); 
@@ -653,6 +674,6 @@ void loop() {
     serial_ComRobot();
     
   }
-}
+} 
 
 

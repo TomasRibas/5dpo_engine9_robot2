@@ -58,7 +58,7 @@ EKF::EKF() {
     // Set initial robot state
     XR(0) = -0.785;
     XR(1) = -0.57;
-    XR(2) = 1.57;   // theta (rad) - facing +Y direction
+    XR(2) = PI/2;   // theta (rad) - facing +Y direction
 
     // Initialize state transition Jacobian [3x3]
     // df/dX - partial derivatives of motion model w.r.t. state

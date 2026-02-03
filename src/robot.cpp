@@ -14,7 +14,8 @@ template <typename T> int sign(T val)
 robot_t::robot_t()
 {
   pos=0;
-  wheel_dist = 0.115;//foi diminuido 1 cm da realidade para fazer "360º" mais accurate
+  //wheel_dist = 0.115;//foi diminuido 1 cm da realidade para fazer "360º" mais accurate
+  wheel_dist = 0.1155;
   wheel_radius = 0.0689 / 2;
   dv_max = 5;
   dw_max = 10;
@@ -32,7 +33,7 @@ robot_t::robot_t()
   //Set initial state
   xe=-0.785;
   ye=-0.57;
-  thetae=1.57;
+  thetae= PI/2;
 
 }
 
