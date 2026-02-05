@@ -1,13 +1,10 @@
 #include <Arduino.h>
-
 #include <WiFi.h>
-
 #include <RPi_Pico_TimerInterrupt.h>
 #include <Wire.h>
 #include "TOF.h"
 #include "robot.h"
 #include "trajectories.h"
-
 #include "followLine.h"
 
 TOF stof;
@@ -23,10 +20,14 @@ PID_pars_t wheel_PID_pars;
 ////////////////////LIDAR///////////////////////
 #include "lds.h"
 
-
 #define DISTANCE_MAX    1000      // 100.0 cm 
 
 lds_scan_t lds_scan;
+
+////////////////////YDLIDAR X4///////////////////////
+#include "Ydlidarx4.h"
+
+YDLidarX4 lidar;
 
 //////////////////EKF/////////////////////////////
 #include "utils.h"
@@ -61,8 +62,6 @@ uint8_t UdpInPacket[UDP_MAX_SIZE];  // buffer for incoming packets
 uint8_t UdpOutPacket[UDP_MAX_SIZE];  // buffer for outgoing packets
 int UdpBufferSize = UDP_MAX_SIZE;
 
-
-
 gchannels_t udp_commands;
 gchannels_t serial_commands;
 commands_list_t pars_list;
@@ -70,6 +69,38 @@ commands_list_t pars_list;
 const char *pars_fname = "pars.cfg";
 bool load_pars_requested = false ;
 bool gotoXY_req = false;
+
+// Scan monitoring
+volatile bool scanDone = false;
+unsigned long n_scans = 0;
+unsigned long last_scan_time = 0;
+unsigned long scan_interval_ms = 0;
+
+// LIDAR status
+bool lidarStarted = false;
+
+// =============================================================================
+// FollowLine Parameters Structure
+// =============================================================================
+struct FollowLinePars {
+    float xi;       // Start X
+    float yi;       // Start Y
+    float xf;       // End X
+    float yf;       // End Y
+    float tf;       // Final theta
+    bool enabled;   // Enable/disable followLine execution
+    bool reset_requested;  // Request to reset state machine
+} fl_pars;
+
+void init_followline_pars() {
+    fl_pars.xi = -0.785f;
+    fl_pars.yi = -0.57f;
+    fl_pars.xf = -0.785f;
+    fl_pars.yf = -0.57f;
+    fl_pars.tf = PI / 2;
+    fl_pars.enabled = false;
+    fl_pars.reset_requested = false;
+}
 
 void set_interval(float new_interval)
 {
@@ -134,6 +165,15 @@ void process_command(command_frame_t frame)
   } else if (frame.command_is("tr")) { 
     robot.thetae = frame.value;    
 
+  } else if (frame.command_is("Xxr")) { 
+    ekf.XR(0) = frame.value;    
+
+  } else if (frame.command_is("Xyr")) { 
+    ekf.XR(1) = frame.value;    
+
+  } else if (frame.command_is("Xtr")) { 
+    ekf.XR(2) = frame.value;    
+
   } else if (frame.command_is("xt")) { 
     traj.xt = frame.value;    
 
@@ -171,6 +211,86 @@ void process_command(command_frame_t frame)
       http_ota.requested = true;
     }
 
+  // =========================================================================
+  // Pose Reset Commands
+  // =========================================================================
+  } else if (frame.command_is("rpose")) { 
+    if (frame.value != 0) {
+      robot.xe = ekf.XR(0);
+      robot.ye = ekf.XR(1);
+      robot.thetae = ekf.XR(2);
+    }
+
+  } else if (frame.command_is("rpdef")) { 
+    if (frame.value != 0) {
+      float def_x = -0.785f;
+      float def_y = -0.57f;
+      float def_theta = 1.5708f;
+      robot.xe = def_x;
+      robot.ye = def_y;
+      robot.thetae = def_theta;
+      ekf.XR(0) = def_x;
+      ekf.XR(1) = def_y;
+      ekf.XR(2) = def_theta;
+    }
+
+  } else if (frame.command_is("setpose")) { 
+    float px, py, pt;
+    if (sscanf(frame.text, "%f,%f,%f", &px, &py, &pt) == 3) {
+      robot.xe = px;
+      robot.ye = py;
+      robot.thetae = pt;
+      ekf.XR(0) = px;
+      ekf.XR(1) = py;
+      ekf.XR(2) = pt;
+    }
+
+  // =========================================================================
+  // LIDAR Control Commands (NEW)
+  // =========================================================================
+  } else if (frame.command_is("lidar")) { 
+    // Start/stop LIDAR: lidar 1; to start, lidar 0; to stop
+    if (frame.value != 0) {
+      if (!lidarStarted) {
+        lidar.start();
+        lidarStarted = true;
+        Serial.println("LIDAR started");
+      }
+    } else {
+      lidar.stop();
+      lidarStarted = false;
+      Serial.println("LIDAR stopped");
+    }
+  // =========================================================================
+  // FollowLine Commands
+  // =========================================================================
+  } else if (frame.command_is("fxi")) { 
+    fl_pars.xi = frame.value;    
+
+  } else if (frame.command_is("fyi")) { 
+    fl_pars.yi = frame.value;    
+
+  } else if (frame.command_is("fxf")) { 
+    fl_pars.xf = frame.value;    
+
+  } else if (frame.command_is("fyf")) { 
+    fl_pars.yf = frame.value;    
+
+  } else if (frame.command_is("ftf")) { 
+    fl_pars.tf = frame.value;    
+
+  } else if (frame.command_is("flen")) { 
+    fl_pars.enabled = (frame.value != 0);
+    if (!fl_pars.enabled) {
+      robot.v_req = 0;
+      robot.w_req = 0;
+    }
+
+  } else if (frame.command_is("flrst")) { 
+    if (frame.value != 0) {
+      fl_pars.reset_requested = true;
+      fl_pars.enabled = true;
+    }
   } 
 }
 
@@ -212,21 +332,17 @@ int analogWriteMax = (1 << analogWriteBits) - 1;
 //SerialPIO SerialTiny(SerialPIO::NOPIN, 21);
 SerialPIO SerialTiny((pin_size_t)-1, 21);
 
-
-
 /////////////////////////////MOTORS/////////////////////////////
 const int motor_left_in1 = 10;
 const int motor_left_in2 = 11;
 const int motor_right_in1 = 12;
 const int motor_right_in2 = 13;
 
-
 //////////////////////////////ENCODERS///////////////////////////////
 #include "PicoEncoder.h"
 
 #define ENCL_A 2 //LEFT
 #define ENCL_B 3 
-
 #define ENCR_A 6 //RIGHT 
 #define ENCR_B 7 
 
@@ -268,10 +384,7 @@ float voltageToPWM(float voltage, float maxVoltage, float maxPWM)
 {
   if (maxVoltage < 1e-3f) return 0;   // avoid NaN/Inf at boot
 
-  // Map voltage to PWM
   int pwm = (voltage / maxVoltage) * maxPWM;
-  
-  // Constrain the PWM value to the valid range
   pwm = constrain(pwm, -maxPWM, maxPWM);
   return pwm;
 }
@@ -344,38 +457,26 @@ void serial_write(const char *buffer, size_t size)
 void serial_Beacons(){
   serial_commands.send_command("Bx0", ekf.BeaconCluster[0].x);
   serial_commands.send_command("By0", ekf.BeaconCluster[0].y);
-  //serial_commands.send_command("Bd0", ekf.BeaconCluster[0].dist);
-  //serial_commands.send_command("Bt0", ekf.BeaconCluster[0].angle);
   serial_commands.send_command("Bn0", ekf.BeaconCluster[0].n);
 
   serial_commands.send_command("Bx1", ekf.BeaconCluster[1].x);
   serial_commands.send_command("By1", ekf.BeaconCluster[1].y);
-  //serial_commands.send_command("Bd1", ekf.BeaconCluster[1].dist);
-  //serial_commands.send_command("Bt1", ekf.BeaconCluster[1].angle);
   serial_commands.send_command("Bn1", ekf.BeaconCluster[1].n);
 
   serial_commands.send_command("Bx2", ekf.BeaconCluster[2].x);
   serial_commands.send_command("By2", ekf.BeaconCluster[2].y);
-  //serial_commands.send_command("Bd2", ekf.BeaconCluster[2].dist);
-  //serial_commands.send_command("Bt2", ekf.BeaconCluster[2].angle);
   serial_commands.send_command("Bn2", ekf.BeaconCluster[2].n);
 
   serial_commands.send_command("Bx3", ekf.BeaconCluster[3].x);
   serial_commands.send_command("By3", ekf.BeaconCluster[3].y);
-  //serial_commands.send_command("Bd3", ekf.BeaconCluster[3].dist);
-  //serial_commands.send_command("Bt3", ekf.BeaconCluster[3].angle);
   serial_commands.send_command("Bn3", ekf.BeaconCluster[3].n);
 
   serial_commands.send_command("Bx4", ekf.BeaconCluster[4].x);
   serial_commands.send_command("By4", ekf.BeaconCluster[4].y);
-  serial_commands.send_command("Bd4", ekf.BeaconCluster[4].dist);
-  //serial_commands.send_command("Bt4", ekf.BeaconCluster[4].angle);
-  //serial_commands.send_command("Bn4", ekf.BeaconCluster[4].n);
+  serial_commands.send_command("Bn4", ekf.BeaconCluster[4].n);
 
   serial_commands.send_command("Bx5", ekf.BeaconCluster[5].x);
   serial_commands.send_command("By5", ekf.BeaconCluster[5].y);
-  //serial_commands.send_command("Bd5", ekf.BeaconCluster[5].dist);
-  //serial_commands.send_command("Bt5", ekf.BeaconCluster[5].angle);
   serial_commands.send_command("Bn5", ekf.BeaconCluster[5].n);
 }
 
@@ -402,77 +503,42 @@ void Spin360(){
   }
 }
 
-void serial_ComRobot(){
-  // Debug information
-  
-  serial_commands.send_command("Xst",ekf.XR(0));
-  serial_commands.send_command("Yst",ekf.XR(1));
-  serial_commands.send_command("Thetast",ekf.XR(2));
+void serial_ComRobot()
+{
+  serial_commands.send_command("Vbat", robot.battery_voltage);
 
-  // serial_commands.send_command("u1", robot.u1);
-  // serial_commands.send_command("u2", robot.u2);
-
-  // serial_commands.send_command("e1", robot.enc1);
-  // serial_commands.send_command("e2", robot.enc2);
-
-  // serial_commands.send_command("Vbat", robot.battery_voltage);
-
-  // serial_commands.send_command("ve", robot.ve);
-  // serial_commands.send_command("we", robot.we);
-
-  // serial_commands.send_command("w1", robot.w1e);
-  // serial_commands.send_command("w2", robot.w2e);
-
-  // serial_commands.send_command("w1req", robot.w1_req);
-  // serial_commands.send_command("w2req", robot.w2_req);
-
-  // serial_commands.send_command("kc", wheel_PID_pars.Kc);
-  // serial_commands.send_command("ki", wheel_PID_pars.Ki);
-  // serial_commands.send_command("kd", wheel_PID_pars.Kd);
-  // serial_commands.send_command("kf", wheel_PID_pars.Kf);
-  // serial_commands.send_command("kfd", wheel_PID_pars.Kfd);
-
-  // serial_commands.send_command("gtx", robot.gotoX);
-  // serial_commands.send_command("gty", robot.gotoY);
-  // serial_commands.send_command("gtt", robot.gotoTheta);
-  // serial_commands.send_command("gtm", (int)(followLineState));
-
-
-  // serial_commands.send_command("sl", robot.solenoid_PWM);
-
-  // serial_commands.send_command("is", robot.i_sense);
-  // serial_commands.send_command("us", robot.u_sense);
-
-  // serial_commands.send_command("mode", robot.control_mode);
-
-  // serial_commands.send_command("IP", WiFi.localIP().toString().c_str());
-
-  // serial_commands.send_command("m1", robot.PWM_1);
-  // serial_commands.send_command("m2", robot.PWM_2);
+  serial_commands.send_command("Xst", ekf.XR(0));
+  serial_commands.send_command("Yst", ekf.XR(1));
+  serial_commands.send_command("Thetast", ekf.XR(2));
 
   serial_commands.send_command("xe", robot.xe);
   serial_commands.send_command("ye", robot.ye);
   serial_commands.send_command("te", robot.thetae);
 
+  // FollowLine state feedback
+  serial_commands.send_command("fls", (float)followLineState);
+  serial_commands.send_command("gts", (float)state);
+  serial_commands.send_command("flen", (float)(fl_pars.enabled ? 1 : 0));
+
+  // Send scan statistics for debugging
+  serial_commands.send_command("nscn", (float)lidar.getNumScans());
+  serial_commands.send_command("scnms", (float)scan_interval_ms);
+  serial_commands.send_command("lpts", (float)lidar.getLastScanPointCount()); 
+
   pars_list.send_sparse_commands(serial_commands);
 
-  // Serial.print(" cmd: ");
-  // Serial.print(serial_commands.frame.command);
-  // Serial.print("; ");
-    
-  //debug = serial_commands.out_count;
-  serial_commands.send_command("dbg", 5); 
-  serial_commands.send_command("loop", micros() - interval);  
+  serial_commands.send_command("dbg", 5.0f); 
+  serial_commands.send_command("loop", (float)(micros() - interval));  
     
   serial_commands.flush();   
-  // Serial.println();
 
   http_ota.handle();
 }
 
+
 void setup() {
 
-  set_interval(0.04);  // In seconds
+  set_interval(0.04);  // 40 ms = 25 Hz
 
   analogReadResolution(10);
 
@@ -495,20 +561,43 @@ void setup() {
 
   pars_list.register_command("fv", &(robot.follow_v));
   pars_list.register_command("fk", &(robot.follow_k));
-
-  //pars_list.register_command("fk", &(robot.i_lambda));
   pars_list.register_command("kt", &(traj.ktheta));
-  //pars_list.register_command("ssid", ssid, max_wifi_str);
-  //pars_list.register_command("pass", password, max_wifi_str);
+
+  // Velocity constants
+  pars_list.register_command("van", &VEL_ANG_NOM);
+  pars_list.register_command("vln", &VEL_LIN_NOM);
+  pars_list.register_command("wda", &W_DA);
+  pars_list.register_command("lda", &LinDeAccel);
+  
+  // Angle thresholds and gains
+  pars_list.register_command("metf", &MAX_ETF);
+  pars_list.register_command("hetf", &HIST_ETF);
+  pars_list.register_command("gfwd", &GAIN_FWD);
+  pars_list.register_command("dda", &DIST_DA);
+  pars_list.register_command("gda", &GAIN_DA);
+  
+  // Distance thresholds
+  pars_list.register_command("tfd", &TOL_FINDIST);
+  pars_list.register_command("dnp", &DIST_NEWPOSE);
+  pars_list.register_command("tnp", &THETA_NEWPOSE);
+  pars_list.register_command("tda", &THETA_DA);
+  pars_list.register_command("tft", &TOL_FINTHETA);
+  
+  // Line following thresholds
+  pars_list.register_command("dnl", &DIST_NEWLINE);
+  pars_list.register_command("dnel", &DIST_NEARLINE);
+
+  // Line following omega gains
+  pars_list.register_command("kdst", &K_DIST);
+  pars_list.register_command("kang", &K_ANG);
 
   udp_commands.init(process_command, serial_write);
-  
   serial_commands.init(process_command, serial_write);
 
-  
+  init_followline_pars();
 
   Serial.begin(115200);
-  Serial1.begin(230400);  // For LIDAR
+  //Serial1.begin(230400);  // For LIDAR initialized by YDLidar library
 
   LittleFS.begin();
   
@@ -538,8 +627,6 @@ void setup() {
 
   // Operate in WiFi Station mode
   WiFi.mode(WIFI_STA);
- 
-  // Start WiFi with supplied parameters
   WiFi.begin(ssid, password);
 
   // Wait until connected or timeout
@@ -548,7 +635,7 @@ void setup() {
 
   while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 20000) {
     Serial.print(".");
-    delay(500);
+    delay(100);
   }
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -562,12 +649,17 @@ void setup() {
 
   initializeMotors();
 
-  ldsInit(&lds_scan);
+  //ldsInit(&lds_scan);
 
+  if (!lidar.begin(Serial1, 128000)) {
+  } else {
+    delay(500);  // Give LIDAR time to stabilize
+    lidar.start();
+    lidarStarted = true;
+  }
 
   Wire.setSDA(4);
   Wire.setSCL(5);
-
   Wire.begin();
 
 
@@ -580,12 +672,11 @@ void setup() {
   SerialTiny.begin(); //leitura da tensão da bateria
 
   robot.control_mode = cm_kinematics;
-  //robot.control_mode = cm_kinematics;
-
+  
+  last_scan_time = millis();
 }
 
 uint8_t b;
-bool scanDone = false;
 
 void loop() {
   
@@ -595,11 +686,13 @@ void loop() {
   }
 
   if (WiFi.connected() && !ip_on){
-    // Connection established
     serial_commands.send_command("msg", (String("Pico W is connected to WiFi network with SSID ") + WiFi.SSID()).c_str());
- 
     ip_on = Udp.begin(localUdpPort);
-    //Serial.printf("Now listening at IP %s, UDP port %d\n", WiFi.localIP().toString().c_str(), localUdpPort);
+  }
+
+  if (load_pars_requested) {
+    load_pars_requested = false;
+    load_commands(pars_fname, serial_commands);
   }
 
   if (ip_on) {
@@ -609,39 +702,63 @@ void loop() {
     if (packetSize) {
       int i;
       udp_on = 1;
-      // receive incoming UDP packets
-
-      //Serial.printf("Received %d bytes from %s, port %d\n", packetSize, Udp.remoteIP().toString().c_str(), Udp.remotePort());
       int len = Udp.read(UdpInPacket, UdpBufferSize - 1);
       if (len > 0) {
         UdpInPacket[len] = 0;
       }
-      //Serial.printf("UDP packet contents (as string): %s\n", UdpInPacket);
-
       for (i = 0; i < len; i++) {
         udp_commands.process_char(UdpInPacket[i]);
-        //Serial.write(UdpInPacket[i]);
       }
     }      
   }
 
-  if(Serial1.available() > 0){
-      if (ldsUpdate(&lds_scan, Serial1.read())) {
-        //scanDone = false;
+  // if(Serial1.available() > 0){
+  //     if (ldsUpdate(&lds_scan, Serial1.read())) {
+  //       //scanDone = false;
       
-        for(int i=0; i<360; i++) {
-          ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001;
-        }
-        scanDone = true; //in meters
+  //       for(int i=0; i<360; i++) {
+  //         ekf.LaserValues(0,i) = lds_scan.data[i].range * 0.001;
+  //       }
+  //       scanDone = true; //in meters
+  //     }
+  // }
+  
+   // Process LIDAR data using class methods
+
+  if (lidarStarted) {
+    lidar.processData();
+   
+    // Check if a complete 360° scan is ready
+    if (lidar.isScanReady()) {
+      //Serial.print("lidarStarted:"); Serial.println(lidarStarted);
+      // Get the 360-degree scan data (in meters)
+      float* scan360 = lidar.get360Scan();
+      
+      // Copy to EKF
+      for (int i = 0; i < 360; i++) {
+        ekf.LaserValues(0, i) = scan360[i];
       }
-  }
       
+      // Debug: Print main rays
+      // Serial.print("Rays (m): ");
+      // Serial.print("0:"); Serial.print(ekf.LaserValues(0, 0), 3); Serial.print("  ");
+      // Serial.print("90:"); Serial.print(ekf.LaserValues(0, 90), 3); Serial.print("  ");
+      // Serial.print("180:"); Serial.print(ekf.LaserValues(0, 180), 3); Serial.print("  ");
+      // Serial.print("270:"); Serial.print(ekf.LaserValues(0, 270), 3); Serial.println();
+      
+      scanDone = true;
+      // n_scans++; // Now handled by lidar class
+      
+      // Clear the flag
+      lidar.clearScanReady();
+    }
+  }
+
   currentMicros = micros();
   if(currentMicros - previousMicros >= interval){
     previousMicros = currentMicros;
 
     read_PIO_encoders();
-    //Serial.println(lds_scan.motor_speed);
     //stof.calculateTOF();
       
     robot.odometry(); 
@@ -652,25 +769,28 @@ void loop() {
       scanDone = false;
 
       ekf.phaseAV();
-
       serial_Beacons();
-
       ekf.motionmodelEKF();
-
-    }else{
-      //Serial.println("No scan data");
     }
 
     setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));
-    //setPose(robot.xe, robot.ye, robot.thetae);
-    followLine(-0.785, -0.50, -0.695, 0.355, PI/2);
+
+    if (fl_pars.reset_requested) {
+      fl_pars.reset_requested = false;
+      followLineState = Follow_Line;
+      state = Rotation;
+    }
+
+    // Run followLine if enabled
+    if (fl_pars.enabled) {
+      followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf);
+    }
 
     robot.accelerationLimit(); 
     robot.calcMotorsVoltage(); 
     setMotorsPWM(robot.u1, robot.u2);
 
   
-
     serial_ComRobot();
     
   }

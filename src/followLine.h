@@ -1,84 +1,71 @@
 #ifndef FOLLOWLINE_H
 #define FOLLOWLINE_H
 
+#include <Arduino.h>
 #include <cmath>
 #include "robot.h"
 
+// ----- Configurable Constants (extern - defined in followLine.cpp) -----
+// These can be modified via gchannels commands
+// Using float for gchannels compatibility
 
-// ----- Helper functions -----
-double NormalizeAngle(double a);
-double Deg(double rad);
-int sign(double v);
+// Velocity constants
+extern float VEL_ANG_NOM;    // Nominal angular velocity (rad/s) - cmd: "van"
+extern float VEL_LIN_NOM;    // Nominal linear velocity (m/s) - cmd: "vln"
+extern float W_DA;           // Deceleration angular velocity - cmd: "wda"
+extern float LinDeAccel;     // Deceleration linear velocity - cmd: "lda"
 
-// Update the internal pose used by gotoXY()/followLine().
-void setPose(double xe, double ye, double thetae);
+// Angle thresholds (radians)
+extern float MAX_ETF;        // Max error to finish rotation - cmd: "metf"
+extern float HIST_ETF;       // Hysteresis for angle error - cmd: "hetf"
+extern float GAIN_FWD;       // Forward gain for angle correction - cmd: "gfwd"
+extern float DIST_DA;        // Distance to start deceleration - cmd: "dda"
+extern float GAIN_DA;        // Deceleration gain - cmd: "gda"
 
-// ----- Constants -----
-extern const double VEL_ANG_NOM;
-extern const double VEL_LIN_NOM;
-extern const double W_DA;
-extern const double LinDeAccel;
+// Distance thresholds (meters)
+extern float TOL_FINDIST;    // Final distance tolerance - cmd: "tfd"
+extern float DIST_NEWPOSE;   // Distance to trigger new pose - cmd: "dnp"
+extern float THETA_NEWPOSE;  // Theta to trigger new pose - cmd: "tnp"
+extern float THETA_DA;       // Theta deceleration threshold - cmd: "tda"
+extern float TOL_FINTHETA;   // Final theta tolerance - cmd: "tft"
 
-extern const double MAX_ETF;
-extern const double HIST_ETF;
-extern const double GAIN_FWD;
-extern const double DIST_DA;
-extern const double GAIN_DA;
+// Line following thresholds
+extern float DIST_NEWLINE;   // Distance to trigger goto nearXY - cmd: "dnl"
+extern float DIST_NEARLINE;  // Distance to return to follow line - cmd: "dnel"
 
-extern const double TOL_FINDIST;
-extern const double DIST_NEWPOSE;
-extern const double THETA_NEWPOSE;
-extern const double THETA_DA;
-extern const double TOL_FINTHETA;
+// Line following omega gains (NEW)
+extern float K_DIST;         // Gain for distance-to-line correction - cmd: "kdst"
+extern float K_ANG;          // Gain for angle error correction - cmd: "kang"
 
-extern const double DIST_NEWLINE;
-extern const double DIST_NEARLINE;
-
-// ----- Enums for state machines -----
-enum GoToXYState {
-    Rotation = 0,
-    Go_Forward,
-    De_Accel,
-    Final_Rot,
-    DeAccel_Final_Rot,
-    StopState
-};
-
+// ----- State Enums -----
 enum FollowLineState {
     Follow_Line = 0,
-    Approaching,
-    Final_Rot_FL,
-    Stop_FL,
-    Goto_NearXY
+    Approaching = 1,
+    Final_Rot_FL = 2,
+    Stop_FL = 3,
+    Goto_NearXY = 4
 };
 
-// FollowLineState is already defined in robot.h as:
-//   enum class FollowLineState { Follow_Line, Approaching, ... }
-// So we do NOT redefine it here.
+enum GoToXYState {
+    Rotation = 0,
+    Go_Forward = 1,
+    De_Accel = 2,
+    Final_Rot = 3,
+    DeAccel_Final_Rot = 4,
+    StopState = 5
+};
 
-// ----- External robot pose/state (globals, like your example) -----
-extern double x, y, theta;     // estimated pose
-extern double vlin, omega;     // commanded v,w
-
-extern GoToXYState state;      // gotoXY state machine
-// We reuse the global state machine variable declared in robot.h:
+// ----- Global State Variables (extern) -----
 extern FollowLineState followLineState;
+extern GoToXYState state;
+extern double distLine;
+extern double kl;
 
-
-// ----- FollowLine globals -----
-extern double distLine;        // unsigned distance to line (abs)
-extern double testSideLine;    // sign of distance to line (+1/-1/0)
-extern double nearX, nearY;    // closest point on line
-extern double error_dist_prev; // previous distance-to-goal
-
-// ----- Function declarations -----
-void MotorVel(float v_req, float w_req); // sends vlin, omega to motors
-
-void Dist2Line(double xi, double yi, double xf, double yf,
-               double xr, double yr,
-               double &kl, double &pix, double &piy);
-
+// ----- Functions -----
+void setPose(double xe, double ye, double thetae);
 void gotoXY(double xf, double yf, double tf);
 void followLine(double xi, double yi, double xf, double yf, double tf);
+double NormalizeAngle(double a);
+double Deg(double rad);
 
 #endif // FOLLOWLINE_H

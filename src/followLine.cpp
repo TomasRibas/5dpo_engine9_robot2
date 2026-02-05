@@ -1,36 +1,38 @@
 #include "followLine.h"
 
-// ----- Constants -----
-const double VEL_ANG_NOM = 1;
-const double VEL_LIN_NOM = 0.2;
-const double W_DA        = 0.5;
-const double LinDeAccel  = 0.1;
+// ----- Configurable Constants (can be set via gchannels) -----
+// Using float instead of double for gchannels compatibility
+float VEL_ANG_NOM = 1.0f;
+float VEL_LIN_NOM = 0.2f;
+float W_DA        = 0.5f;
+float LinDeAccel  = 0.1f;
 
-const double MAX_ETF      = 10 * M_PI/180.0;
-const double HIST_ETF     =  5 * M_PI/180.0;
-const double GAIN_FWD     = 0.1;//0.02;
-const double DIST_DA      = 0.05;
-const double GAIN_DA      = 0.1;//0.0005;
+float MAX_ETF      = 10.0f * M_PI/180.0f;//0.1745
+float HIST_ETF     =  5.0f * M_PI/180.0f;//0.0873
+float GAIN_FWD     = 0.1f;
+float DIST_DA      = 0.05f;
+float GAIN_DA      = 0.1f;
 
-const double TOL_FINDIST  = 0.05;//0.02;
-const double DIST_NEWPOSE = 0.5;
-const double THETA_NEWPOSE = 15 * M_PI/180.0;
-//const double THETA_DA      = 15 * M_PI/180.0;
-const double THETA_DA      = 5 * M_PI/180.0;
-const double TOL_FINTHETA  = 1 *  M_PI/180.0;
+float TOL_FINDIST  = 0.01f;
+float DIST_NEWPOSE = 0.5f;
+float THETA_NEWPOSE = 15.0f * M_PI/180.0f;//0.2618
+float THETA_DA      = 5.0f * M_PI/180.0f;//0.0873
+float TOL_FINTHETA  = 1.0f * M_PI/180.0f;//0.01745
 
-const double DIST_NEWLINE  = 0.1;
-// const double DIST_NEARLINE = 0.05;
-const double DIST_NEARLINE = 0.03;
+float DIST_NEWLINE  = 0.1f;
+float DIST_NEARLINE = 0.05f;
 
-// ----- Global variables (like your goToXY example) -----
-double x , y , theta; // Initial estimated pose
+// Line following omega gains (NEW)
+// omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM
+float K_DIST = 4.0f;      // Gain for distance-to-line correction - cmd: "kdst"
+float K_ANG  = 0.15f;     // Gain for angle error correction - cmd: "kang"
+
+// ----- Global variables -----
+double x, y, theta;
 double vlin = 0.0, omega = 0.0;
 
 FollowLineState followLineState = Follow_Line;
-
 GoToXYState state = Rotation;
-
 
 double distLine = 0.0;
 double testSideLine = 0.0;
@@ -63,9 +65,6 @@ void MotorVel(float v_req, float w_req) {
 }
 
 // Modified Dist2Line: also computes the projection parameter 't' along the line segment
-// t < 0 means robot is behind the start point
-// t > 1 means robot is past the end point
-// 0 <= t <= 1 means robot is alongside the segment
 void Dist2Line(double xi, double yi, double xf, double yf, double xr, double yr,
                double &kl, double &pix, double &piy, double &t_param)
 {
@@ -84,20 +83,12 @@ void Dist2Line(double xi, double yi, double xf, double yf, double xr, double yr,
     double ux = dx / lineLen;
     double uy = dy / lineLen;
     
-    // kl is the signed perpendicular distance (original Pascal formula)
     kl = (xr*uy - yr*ux - xi*uy + yi*ux);
     
-    // Nearest point on the INFINITE line
     pix = -kl*uy + xr;
     piy =  kl*ux + yr;
     
-    // t_param: projection parameter along line segment
     t_param = ((pix - xi)*ux + (piy - yi)*uy) / lineLen;
-    
-    Serial.print(" kl: "); Serial.print(kl);
-    Serial.print(" pix: "); Serial.print(pix);
-    Serial.print(" piy: "); Serial.print(piy);
-    Serial.print(" t: "); Serial.print(t_param);
 }
 
 void gotoXY(double xf, double yf, double tf)
@@ -157,7 +148,7 @@ void gotoXY(double xf, double yf, double tf)
             break;
     }
 
-    // Outputs - ORIGINAL signs
+    // Outputs
     switch (state) {
         case Rotation:
             vlin  = 0.0;
@@ -196,33 +187,23 @@ void gotoXY(double xf, double yf, double tf)
 
 void followLine(double xi, double yi, double xf, double yf, double tf)
 {
-    // tr = angle of the line
     double tr = std::atan2(yf - yi, xf - xi);
     double error_ang  = NormalizeAngle(tr - theta);
     double error_dist = std::sqrt((xf - x)*(xf - x) + (yf - y)*(yf - y));
 
-    // Get distance to line, nearest point, AND projection parameter
     double t_param;
     Dist2Line(xi, yi, xf, yf, x, y, kl, nearX, nearY, t_param);
 
     testSideLine = sign(kl);
     distLine     = std::abs(kl);
     
-    // Check if robot is behind start point (t < 0)
     bool behindStart = (t_param < 0.0);
     
-    // If behind the start point, set nearX/nearY to be the start point
     if (behindStart) {
         nearX = xi;
         nearY = yi;
         distLine = std::sqrt((x - xi)*(x - xi) + (y - yi)*(y - yi));
     }
-
-    Serial.print(" distLine: "); Serial.print(distLine);
-    Serial.print(" error_dist: "); Serial.print(error_dist);
-    Serial.print(" error_ang: "); Serial.print(Deg(error_ang));
-    Serial.print(" t_param: "); Serial.print(t_param);
-    Serial.print(" State: "); Serial.println(followLineState);
 
     // State transitions
     switch (followLineState) {
@@ -265,17 +246,17 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
             break;
     }
 
-    // Outputs - ORIGINAL signs for omega
+    // Outputs - using configurable K_DIST and K_ANG gains
     switch (followLineState) {
         case Follow_Line:
             vlin  = VEL_LIN_NOM;
-            omega = /*0.5*/0.5 * testSideLine * distLine + 0.15 * error_ang * VEL_ANG_NOM;
+            omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
             MotorVel((float)vlin, (float)omega);
             break;
 
         case Approaching:
             vlin  = LinDeAccel;
-            omega = /*0.5*/0.5 * testSideLine * distLine + 0.15 * error_ang * VEL_ANG_NOM;
+            omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
             MotorVel((float)vlin, (float)omega);
             break;
 

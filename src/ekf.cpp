@@ -277,7 +277,7 @@ void EKF::phaseAV() {
         // Convert angle to LIDAR index (0-359 degrees)
         // LIDAR index 0 = 0 degrees in robot frame
         idx_beacon = (int)round(expectedAngle * 180.0 / M_PI);
-        
+
         // Handle negative angles
         if (idx_beacon < 0) {
             idx_beacon += 360;
@@ -310,7 +310,7 @@ void EKF::phaseAV() {
             double distToBeacon = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
             
             // Association threshold (adjust based on beacon size and measurement noise)
-            const double ASSOCIATION_THRESHOLD = 0.1;//0.2;  // 10 cm
+            const double ASSOCIATION_THRESHOLD = 0.2;//0.2;  // 10 cm
             
             if (distToBeacon < ASSOCIATION_THRESHOLD) {
                 // Update cluster with running mean
