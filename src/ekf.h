@@ -27,7 +27,7 @@
 #define sensA_stddev 0.009 // radians
 
 // Search window for beacon association (rays on each side)
-#define deltaRay 40
+#define deltaRay 22
 
 // EKF dimensions
 #define NStates 3   // x, y, theta
@@ -43,7 +43,7 @@
 #define MAX_DIST_INNOVATION 0.3    // meters
 #define MAX_ANGLE_INNOVATION 0.5   // radians (~28 degrees)
 
-#define LIDAR_ANGLE_OFFSET (0)
+// #define LIDAR_ANGLE_OFFSET (0)
 
 // Position structure
 typedef struct {
