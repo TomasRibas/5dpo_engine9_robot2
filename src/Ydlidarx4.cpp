@@ -214,6 +214,13 @@ void YDLidarX4::processLaserPackage() {
     delta_angle += 360.0f;
   }
   
+  // ========== ADDED: Initialize bin_counts ==========
+  int bin_counts[360];
+  for (int i = 0; i < 360; i++) {
+    bin_counts[i] = 0;
+  }
+  // ==================================================
+  
   for (uint8_t i = 0; i < sample_count_; i++) {
     uint16_t raw_dist = raw_distances_[i];
     
@@ -242,29 +249,30 @@ void YDLidarX4::processLaserPackage() {
     while (angle < 0.0f) angle += 360.0f;
     while (angle >= 360.0f) angle -= 360.0f;
     
-    // ============================================================
-    // ANGLE DIRECTION CONFIGURATION
-    // ============================================================
-    // YDLIDAR X4 spins clockwise (CW) when viewed from above
-    // Uncomment the following to convert to CCW (standard math convention):
-    
-    // angle = 360.0f - angle;
-    // if (angle >= 360.0f) angle = 0.0f;
-    
-    // ============================================================
-    
     // Bin to integer degree
     int idx = (int)(angle + 0.5f);
     if (idx >= 360) idx = 0;
     if (idx < 0) idx = 359;
     
-    // Store minimum distance per bin (closest obstacle wins)
-    if (full_scan_mm_[idx] == 0.0f || distance_mm < full_scan_mm_[idx]) {
-      full_scan_mm_[idx] = distance_mm;
+    // ========== CHANGED: Accumulate instead of minimum ==========
+    if (bin_counts[idx] == 0) {
+      full_scan_mm_[idx] = distance_mm;  // First sample
+    } else {
+      full_scan_mm_[idx] += distance_mm;  // Add to sum
     }
+    bin_counts[idx]++;
+    // ============================================================
     
     total_points_++;
   }
+  
+  // ========== ADDED: Compute averages ==========
+  for (int i = 0; i < 360; i++) {
+    if (bin_counts[i] > 1) {
+      full_scan_mm_[i] = full_scan_mm_[i] / bin_counts[i];
+    }
+  }
+  // =============================================
 }
 
 void YDLidarX4::finalizeScan() {

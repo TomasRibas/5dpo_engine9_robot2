@@ -172,8 +172,8 @@ bool EKF::isInnovationValid(double distInnovation, double angleInnovation) {
 // Configuration constants - adjust these for your setup
 #define LIDAR_TO_ROBOT_OFFSET 0.005f   // Distance from LIDAR center to robot center (m)
 #define LIDAR_CCW false                  // true if angles increase counter-clockwise
-#define LIDAR_ANGLE_OFFSET 0            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
-#define ASSOCIATION_THRESHOLD 0.15      // Max distance to associate point with beacon (m)
+#define LIDAR_ANGLE_OFFSET 4            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
+#define ASSOCIATION_THRESHOLD 0.20     // Max distance to associate point with beacon (m)
 #define BEACON_RADIUS_OFFSET 0.042       // Offset for beacon center (m)
 
 void EKF::phaseAV() {

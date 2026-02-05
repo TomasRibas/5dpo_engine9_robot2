@@ -65,6 +65,7 @@ extern double kl;
 void setPose(double xe, double ye, double thetae);
 void gotoXY(double xf, double yf, double tf);
 void followLine(double xi, double yi, double xf, double yf, double tf);
+void resetFollowLine();  // Reset all internal state for a new segment
 double NormalizeAngle(double a);
 double Deg(double rad);
 

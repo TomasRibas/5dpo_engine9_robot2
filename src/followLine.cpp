@@ -60,6 +60,19 @@ void setPose(double xe, double ye, double thetae) {
     theta = NormalizeAngle(thetae);
 }
 
+void resetFollowLine() {
+    followLineState = Follow_Line;
+    state = Rotation;
+    distLine = 0.0;
+    testSideLine = 0.0;
+    nearX = 0.0;
+    nearY = 0.0;
+    error_dist_prev = 99999.0;
+    kl = 0.0;
+    vlin = 0.0;
+    omega = 0.0;
+}
+
 void MotorVel(float v_req, float w_req) {
    robot.setRobotVW(v_req, w_req);
 }
@@ -101,7 +114,6 @@ void gotoXY(double xf, double yf, double tf)
     const int rotateTo      = (error_ang > 0.0) ?  1 : -1;
     const int rotateToFinal = (error_final_rot > 0.0) ?  1 : -1;
 
-    // State transitions
     switch (state) {
         case Rotation:
             if (std::abs(error_ang) < MAX_ETF)
@@ -198,6 +210,7 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
     distLine     = std::abs(kl);
     
     bool behindStart = (t_param < 0.0);
+    bool pastEnd     = (t_param > 1.0);
     
     if (behindStart) {
         nearX = xi;
@@ -211,7 +224,7 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
             if (behindStart || distLine > DIST_NEWLINE) {
                 followLineState = Goto_NearXY;
                 state = Rotation;
-            } else if (error_dist < 10.0 * TOL_FINDIST) {
+            } else if (pastEnd || error_dist < 10.0 * TOL_FINDIST) {
                 followLineState = Approaching;
             }
             break;
@@ -221,6 +234,21 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
                 followLineState = Final_Rot_FL;
                 state = Rotation;
             }
+            // Past end of segment - hand off to gotoXY to reach final point
+            else if (pastEnd) {
+                followLineState = Final_Rot_FL;
+                state = Rotation;
+            }
+            // ESCAPE 1: Saiu muito da linha
+            else if (distLine > DIST_NEWLINE) {
+                followLineState = Goto_NearXY;
+                state = Rotation;
+            }
+            // ESCAPE 2: Destino ficou muito longe (nova instrução)
+            else if (error_dist > 0.5f) {
+                followLineState = Follow_Line;
+            }
+
             break;
 
         case Final_Rot_FL:

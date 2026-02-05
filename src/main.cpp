@@ -249,6 +249,8 @@ void process_command(command_frame_t frame)
       robot.xe = ekf.XR(0);
       robot.ye = ekf.XR(1);
       robot.thetae = ekf.XR(2);
+
+      resetFollowLine();
     }
 
   } else if (frame.command_is("rpdef")) { 
@@ -262,6 +264,7 @@ void process_command(command_frame_t frame)
       ekf.XR(0) = def_x;
       ekf.XR(1) = def_y;
       ekf.XR(2) = def_theta;
+      resetFollowLine();
     }
 
   } else if (frame.command_is("setpose")) { 
@@ -273,6 +276,7 @@ void process_command(command_frame_t frame)
       ekf.XR(0) = px;
       ekf.XR(1) = py;
       ekf.XR(2) = pt;
+      resetFollowLine();
     }
 
   // =========================================================================
@@ -321,6 +325,8 @@ void process_command(command_frame_t frame)
     if (frame.value != 0) {
       fl_pars.reset_requested = true;
       fl_pars.enabled = true;
+
+      setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));
     }
   } 
 }
@@ -490,6 +496,12 @@ void serial_ComRobot()
   serial_commands.send_command("fls", (float)followLineState);
   serial_commands.send_command("gts", (float)state);
   serial_commands.send_command("flen", (float)(fl_pars.enabled ? 1 : 0));
+
+  serial_commands.send_command("fxi", (float)fl_pars.xi);
+  serial_commands.send_command("fyi", (float)fl_pars.yi);
+  serial_commands.send_command("fxf", (float)fl_pars.xf);
+  serial_commands.send_command("fyf", (float)fl_pars.yf);
+  serial_commands.send_command("ftf", (float)fl_pars.tf);
 
   // Send scan statistics for debugging
   serial_commands.send_command("nscn", (float)lidar.getNumScans());
@@ -709,9 +721,7 @@ void setup() {
   robot.control_mode = cm_kinematics;
 
   last_scan_time = millis();
-  
-  Serial.println("Pico ready - YDLidar X4");
-  Serial.println("Monitor 'nscn', 'scnms', 'lpts', 'lhz' for scan statistics");
+
 }
 
 uint8_t b;
@@ -780,12 +790,36 @@ void loop() {
 
     // Update pose for followLine controller
     setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));
+
+    // Auto-detect parameter changes and reset state machine
+    static float last_xi = fl_pars.xi;
+    static float last_yi = fl_pars.yi;
+    static float last_xf = fl_pars.xf;
+    static float last_yf = fl_pars.yf;
+    static float last_tf = fl_pars.tf;
     
+    if (fl_pars.enabled) {
+        // Check if any parameter changed
+        if (fl_pars.xi != last_xi || fl_pars.yi != last_yi ||
+            fl_pars.xf != last_xf || fl_pars.yf != last_yf ||
+            fl_pars.tf != last_tf) {
+                        
+  
+            resetFollowLine();
+
+            // Update tracked values
+            last_xi = fl_pars.xi;
+            last_yi = fl_pars.yi;
+            last_xf = fl_pars.xf;
+            last_yf = fl_pars.yf;
+            last_tf = fl_pars.tf;
+        }
+    }
+        
     // Handle followLine reset request
     if (fl_pars.reset_requested) {
       fl_pars.reset_requested = false;
-      followLineState = Follow_Line;
-      state = Rotation;
+      resetFollowLine();
     }
 
     // Run followLine if enabled
