@@ -1,7 +1,7 @@
 /*
  * YDLidar X4 Driver for Arduino
  * Based on 5DPO ROS driver
- * Accumulates scan data and bins to 360 degrees
+ * WITH TIMEOUT-BASED TEMPORAL FILTERING
  */
 
 #pragma once
@@ -65,8 +65,8 @@ public:
   // Returns true when a complete 360° scan is ready
   bool processData();
   
-  // Get 360-degree binned scan in meters
-  // Returns pointer to array of 360 values (one per degree)
+  // Get 720-point scan (0.5° resolution) in meters
+  // Returns pointer to array of 720 values (one per 0.5 degree)
   float* get360Scan() { return full_scan_m_; }
   
   // Check if a new 360° scan is ready
@@ -83,11 +83,33 @@ public:
   
   // Get number of points in last complete scan
   uint16_t getLastScanPointCount() { return last_point_count_; }
+  
+  // ========== OUTLIER FILTERING FUNCTIONS ==========
+  
+  // Enable/disable outlier filtering (enabled by default)
+  void setOutlierFilterEnabled(bool enabled);
+  
+  // Set outlier filter parameters
+  // min_neighbors: minimum number of nearby points required (default: 2)
+  // angle_window: angular window in bins to check for neighbors (default: 5 = ±2.5°)
+  void setOutlierFilterParams(int min_neighbors, int angle_window);
+  
+  // ========== TEMPORAL PERSISTENCE CONTROL ==========
+  
+  // Set how many scans to keep old data before clearing it
+  // Default: 3 scans (~150ms at 5Hz)
+  // Higher = more stable but slower to remove ghost beacons
+  // Lower = faster removal but more flickering
+  void setTemporalPersistence(int num_scans);
+  
+  // =================================================
 
 private:
   void processSerialByte(uint8_t ch);
   void processLaserPackage();
   void finalizeScan();
+  void filterOutliers();
+  void updateTemporalPersistence();
   float rawAngleToFloat(uint16_t raw_angle);
   float normalizeAngle(float angle);
   
@@ -105,9 +127,9 @@ private:
   uint16_t raw_distances_[40];  // Raw distance data for current package (max 40 samples per pkg)
   uint8_t sample_count_;        // Current sample being read
   
-  // 360-degree binned scan (in mm, then converted to meters)
-  float full_scan_mm_[360];     // Accumulation buffer in mm
-  float full_scan_m_[360];      // Final output in meters
+  // 720-point binned scan (0.5° resolution)
+  float full_scan_mm_[720];     // Accumulation buffer in mm
+  float full_scan_m_[720];      // Final output in meters
   bool scan_360_ready_;         // Flag for 360° scan completion
   uint16_t total_points_;       // Total points accumulated in current scan
   
@@ -116,4 +138,13 @@ private:
   float scan_rate_;
   unsigned long num_scans_;
   uint16_t last_point_count_;
+  
+  // Outlier filtering parameters
+  bool enable_outlier_filter_;
+  int outlier_neighbor_threshold_;  // Minimum neighbors required
+  int outlier_angle_window_;        // Angular window to check (in bins)
+  
+  // Temporal persistence tracking
+  uint8_t scan_age_[720];           // How many scans since last update for each bin
+  int temporal_persistence_limit_;   // Max scans to keep old data
 };

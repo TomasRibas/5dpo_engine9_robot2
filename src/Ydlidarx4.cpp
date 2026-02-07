@@ -1,11 +1,11 @@
 /*
- * YDLidar X4 Driver for Arduino - FINAL PRODUCTION VERSION
+ * YDLidar X4 Driver for Arduino - WITH TIMEOUT-BASED TEMPORAL FILTERING
  * 
  * Features:
- * - Correct packet parsing per YDLIDAR X4 protocol
- * - Temporal gap filling (keeps previous valid reading for intermittent angles)
- * - Proper distance filtering (120mm - 10000mm per X4 spec)
- * - Configurable angle direction (CW or CCW)
+ * - Angular correction for mechanical offset
+ * - Outlier filtering (removes isolated points)
+ * - Timeout-based temporal persistence (keeps data for N scans, then clears)
+ * - Prevents ghost beacons while reducing flickering
  */
 
 #include "Ydlidarx4.h"
@@ -21,11 +21,16 @@ YDLidarX4::YDLidarX4()
     last_scan_time_(0),
     scan_rate_(0.0f),
     num_scans_(0),
-    last_point_count_(0)
+    last_point_count_(0),
+    enable_outlier_filter_(false),
+    outlier_neighbor_threshold_(2),
+    outlier_angle_window_(5),
+    temporal_persistence_limit_(0)  // Keep data for 3 scans (~150ms)
 {
-  for (int i = 0; i < 360; i++) {
+  for (int i = 0; i < 720; i++) {
     full_scan_mm_[i] = 0.0f;
     full_scan_m_[i] = 0.0f;
+    scan_age_[i] = 255;  // 255 = no data
   }
 }
 
@@ -69,9 +74,10 @@ void YDLidarX4::start() {
   total_points_ = 0;
   last_scan_time_ = millis();
   
-  for (int i = 0; i < 360; i++) {
+  for (int i = 0; i < 720; i++) {
     full_scan_mm_[i] = 0.0f;
     full_scan_m_[i] = 0.0f;
+    scan_age_[i] = 255;
   }
 }
 
@@ -214,12 +220,11 @@ void YDLidarX4::processLaserPackage() {
     delta_angle += 360.0f;
   }
   
-  // ========== ADDED: Initialize bin_counts ==========
-  int bin_counts[360];
-  for (int i = 0; i < 360; i++) {
+  // Initialize bin_counts
+  int bin_counts[720];
+  for (int i = 0; i < 720; i++) {
     bin_counts[i] = 0;
   }
-  // ==================================================
   
   for (uint8_t i = 0; i < sample_count_; i++) {
     uint16_t raw_dist = raw_distances_[i];
@@ -233,7 +238,7 @@ void YDLidarX4::processLaserPackage() {
     float distance_mm = (float)raw_dist / 4.0f;
     
     // Filter by YDLIDAR X4 specifications: 120mm - 10000mm
-    if (distance_mm < 120.0f || distance_mm > 10000.0f) {
+    if (distance_mm < 10.0f/*120.0f*/  || distance_mm > 4000.0f) { ///CHANGED DISTANCE LIMITS from 120mm-10m to 10mm-4m to allow  only closer points (for better beacon detection)
       continue;
     }
     
@@ -245,47 +250,55 @@ void YDLidarX4::processLaserPackage() {
       angle = start_angle_;
     }
     
+    // Angular correction for mechanical offset
+    float angle_correction;
+    if (distance_mm == 0.0f) {
+      angle_correction = 0.0f;
+    } else {
+      angle_correction = atan2f(21.8f * (155.3f - distance_mm), 
+                                 155.3f * distance_mm) * 180.0f / PI;
+    }
+    
+    // Apply correction to angle
+    angle = angle + angle_correction;
+    
     // Normalize to 0-360
     while (angle < 0.0f) angle += 360.0f;
     while (angle >= 360.0f) angle -= 360.0f;
     
-    // Bin to integer degree
-    int idx = (int)(angle + 0.5f);
-    if (idx >= 360) idx = 0;
-    if (idx < 0) idx = 359;
+    // Bin to 0.5° resolution (720 bins)
+    int idx = (int)(angle * 2.0f + 0.5f);
+    if (idx >= 720) idx = 0;
+    if (idx < 0) idx = 719;
     
-    // ========== CHANGED: Accumulate instead of minimum ==========
+    // Accumulate instead of minimum
     if (bin_counts[idx] == 0) {
-      full_scan_mm_[idx] = distance_mm;  // First sample
+      full_scan_mm_[idx] = distance_mm;
     } else {
-      full_scan_mm_[idx] += distance_mm;  // Add to sum
+      full_scan_mm_[idx] += distance_mm;
     }
     bin_counts[idx]++;
-    // ============================================================
     
     total_points_++;
   }
   
-  // ========== ADDED: Compute averages ==========
-  for (int i = 0; i < 360; i++) {
+  // Compute averages
+  for (int i = 0; i < 720; i++) {
     if (bin_counts[i] > 1) {
       full_scan_mm_[i] = full_scan_mm_[i] / bin_counts[i];
     }
   }
-  // =============================================
 }
 
 void YDLidarX4::finalizeScan() {
-  // Convert mm to meters with TEMPORAL GAP FILLING
-  // If current scan has no data for an angle, keep the previous valid reading
-  for (int i = 0; i < 360; i++) {
-    if (full_scan_mm_[i] > 0.0f) {
-      // New valid reading - update output
-      full_scan_m_[i] = full_scan_mm_[i] * 0.001f;
-    }
-    // If full_scan_mm_[i] == 0, keep previous value in full_scan_m_[i]
-    // This provides temporal gap filling for intermittent readings
+  // Apply outlier filtering BEFORE converting to meters
+  if (enable_outlier_filter_) {
+    filterOutliers();
   }
+  
+  // ========== TIMEOUT-BASED TEMPORAL PERSISTENCE ==========
+  updateTemporalPersistence();
+  // ========================================================
   
   scan_360_ready_ = true;
   num_scans_++;
@@ -302,10 +315,89 @@ void YDLidarX4::finalizeScan() {
   last_scan_time_ = now;
   
   // Reset accumulation buffer for next scan
-  for (int i = 0; i < 360; i++) {
+  for (int i = 0; i < 720; i++) {
     full_scan_mm_[i] = 0.0f;
   }
   total_points_ = 0;
+}
+
+void YDLidarX4::updateTemporalPersistence() {
+  // For each bin, update age and decide whether to keep or clear data
+  for (int i = 0; i < 720; i++) {
+    if (full_scan_mm_[i] > 0.0f) {
+      // New data received - reset age and update value
+      scan_age_[i] = 0;
+      full_scan_m_[i] = full_scan_mm_[i] * 0.001f;
+    } else {
+      // No new data - age the existing data
+      if (scan_age_[i] < 255) {  // 255 = already cleared
+        scan_age_[i]++;
+        
+        // Check if data is too old
+        if (scan_age_[i] >= temporal_persistence_limit_) {
+          // Data expired - clear it
+          full_scan_m_[i] = 0.0f;
+          scan_age_[i] = 255;  // Mark as cleared
+        }
+        // else: keep previous value (temporal persistence)
+      }
+    }
+  }
+}
+
+void YDLidarX4::filterOutliers() {
+  // Remove isolated points that don't have enough neighbors
+  // This helps eliminate noise and phantom reflections
+  
+  for (int i = 0; i < 720; i++) {
+    if (full_scan_mm_[i] == 0.0f) {
+      continue; // Skip empty bins
+    }
+    
+    // Count valid neighbors within angular window
+    int neighbor_count = 0;
+    float current_dist = full_scan_mm_[i];
+    
+    // Check neighbors within +/- outlier_angle_window_ bins (default ±5 = ±2.5°)
+    for (int offset = -outlier_angle_window_; offset <= outlier_angle_window_; offset++) {
+      if (offset == 0) continue; // Don't count self
+      
+      int neighbor_idx = i + offset;
+      
+      // Handle wraparound at 0/360°
+      if (neighbor_idx < 0) neighbor_idx += 720;
+      if (neighbor_idx >= 720) neighbor_idx -= 720;
+      
+      if (full_scan_mm_[neighbor_idx] > 0.0f) {
+        // Check if neighbor is at similar distance (within 30% or 200mm)
+        float neighbor_dist = full_scan_mm_[neighbor_idx];
+        float dist_diff = abs(neighbor_dist - current_dist);
+        float max_allowed_diff = max(current_dist * 0.3f, 200.0f);
+        
+        if (dist_diff < max_allowed_diff) {
+          neighbor_count++;
+        }
+      }
+    }
+    
+    // If not enough neighbors, mark as outlier (set to 0)
+    if (neighbor_count < outlier_neighbor_threshold_) {
+      full_scan_mm_[i] = 0.0f;
+    }
+  }
+}
+
+void YDLidarX4::setOutlierFilterEnabled(bool enabled) {
+  enable_outlier_filter_ = enabled;
+}
+
+void YDLidarX4::setOutlierFilterParams(int min_neighbors, int angle_window) {
+  outlier_neighbor_threshold_ = min_neighbors;
+  outlier_angle_window_ = angle_window;
+}
+
+void YDLidarX4::setTemporalPersistence(int num_scans) {
+  temporal_persistence_limit_ = num_scans;
 }
 
 float YDLidarX4::rawAngleToFloat(uint16_t raw_angle) {

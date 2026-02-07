@@ -26,8 +26,8 @@
 #define sensD_stddev 0.05
 #define sensA_stddev 0.009 // radians
 
-// Search window for beacon association (rays on each side)
-#define deltaRay 22
+// Search window for beacon association (rays on each side, at 0.5° resolution)
+#define deltaRay 40
 
 // EKF dimensions
 #define NStates 3   // x, y, theta
@@ -37,7 +37,7 @@
 #define NBEACONS 6
 
 // Minimum number of LIDAR points to consider a valid beacon detection
-#define MIN_BEACON_POINTS 1
+#define MIN_BEACON_POINTS 2
 
 // Maximum innovation threshold for outlier rejection
 #define MAX_DIST_INNOVATION 0.3    // meters
@@ -115,8 +115,8 @@ public:
     // Innovation covariance [2x2]
     BLA::Matrix<NObs, NObs, double> S;
 
-    // LIDAR measurements array [1x360] - range values in meters
-    BLA::Matrix<1, 360, double> LaserValues;
+    // LIDAR measurements array [1x720] - range values in meters (0.5° resolution)
+    BLA::Matrix<1, 720, double> LaserValues;
     
     // Known beacon positions in world frame
     TPos BeaconPos[NBEACONS];

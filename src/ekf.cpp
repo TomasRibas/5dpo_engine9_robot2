@@ -31,7 +31,7 @@ EKF::EKF() {
 
     R.Fill(0.0);
     R(0, 0) = pow(0.05, 2);   // Measurement noise for distance (m²)
-    R(1, 1) = pow(0.05, 2);   // Measurement noise for angle (rad²)
+    R(1, 1) = pow(0.02, 2);   // Measurement noise for angle (rad²)
 
     // Set known beacon positions in world frame
     BeaconPos[0].x = -0.8985;  BeaconPos[0].y = -0.6485;
@@ -52,9 +52,12 @@ EKF::EKF() {
     }
 
     // Set initial robot state
+    // XR(0) = -0.785;
+    // XR(1) = -0.57;
+    // XR(2) = PI/2;   
     XR(0) = -0.785;
-    XR(1) = -0.57;
-    XR(2) = PI/2;   // theta (rad) - facing +Y direction
+    XR(1) = -0.355;
+    XR(2) = PI/2;   
 
     // Initialize state transition Jacobian [3x3]
     grad_f_X.Fill(0.0);
@@ -172,7 +175,7 @@ bool EKF::isInnovationValid(double distInnovation, double angleInnovation) {
 // Configuration constants - adjust these for your setup
 #define LIDAR_TO_ROBOT_OFFSET 0.005f   // Distance from LIDAR center to robot center (m)
 #define LIDAR_CCW false                  // true if angles increase counter-clockwise
-#define LIDAR_ANGLE_OFFSET 4            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
+#define LIDAR_ANGLE_OFFSET 0            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
 #define ASSOCIATION_THRESHOLD 0.20     // Max distance to associate point with beacon (m)
 #define BEACON_RADIUS_OFFSET 0.042       // Offset for beacon center (m)
 
@@ -195,43 +198,43 @@ void EKF::phaseAV() {
         // Expected angle in robot frame (radians, -PI to PI)
         double expectedAngle = normalizeAngle(atan2(dy, dx) - XR(2));
         
-        // Convert to LIDAR index (0-359 degrees)
-        int idx_beacon_deg = (int)round(expectedAngle * 180.0 / M_PI);
+        // Convert to LIDAR index (0-719, at 0.5 deg per bin)
+        int idx_beacon_half = (int)round(expectedAngle * 180.0 / M_PI * 2.0);
         
         // Apply LIDAR angle convention
         if (LIDAR_CCW) {
-            idx_beacon = idx_beacon_deg;
+            idx_beacon = idx_beacon_half;
         } else {
-            idx_beacon = -idx_beacon_deg;
+            idx_beacon = -idx_beacon_half;
         }
         
-        // Add any mounting offset
-        idx_beacon += LIDAR_ANGLE_OFFSET;
+        // Add any mounting offset (converted to 0.5 deg units)
+        idx_beacon += LIDAR_ANGLE_OFFSET * 2;
         
-        // Normalize to 0-359 range
-        while (idx_beacon < 0) idx_beacon += 360;
-        idx_beacon = idx_beacon % 360;
+        // Normalize to 0-719 range
+        while (idx_beacon < 0) idx_beacon += 720;
+        idx_beacon = idx_beacon % 720;
         
         // Search window around expected angle
         BeaconCluster[j].firstRay = idx_beacon - deltaRay;
         if (BeaconCluster[j].firstRay < 0) {
-            BeaconCluster[j].firstRay += 360;
+            BeaconCluster[j].firstRay += 720;
         }
 
         // Search through LIDAR rays in window
         for (int i = 0; i < 2 * deltaRay; i++) {
-            idx = (BeaconCluster[j].firstRay + i) % 360;
+            idx = (BeaconCluster[j].firstRay + i) % 720;
             
             MeasureDist = LaserValues(0, idx);  // Distance in meters
             
             // Skip invalid measurements
             // YDLidar X4 range: 0.12m to 10m
-            if (MeasureDist < 0.12 || MeasureDist > 10.0) { 
+            if (MeasureDist < 0.03 || MeasureDist > 2.5) { 
                 continue;
             }
             
-            // Convert LIDAR index back to angle in radians
-            double rayAngleDeg = (double)idx;
+            // Convert LIDAR index back to angle in radians (0.5 deg per bin)
+            double rayAngleDeg = (double)idx * 0.5;
             double rayAngleRad;
             
             if (LIDAR_CCW) {
@@ -261,8 +264,10 @@ void EKF::phaseAV() {
             double cluster_dx = BeaconCluster[j].x - XR(0);
             double cluster_dy = BeaconCluster[j].y - XR(1);
             
-            BeaconCluster[j].dist = sqrt(cluster_dx * cluster_dx + cluster_dy * cluster_dy) + BEACON_RADIUS_OFFSET;
             BeaconCluster[j].angle = normalizeAngle(atan2(cluster_dy, cluster_dx) - XR(2));
+            BeaconCluster[j].dist = sqrt(cluster_dx * cluster_dx + cluster_dy * cluster_dy) + BEACON_RADIUS_OFFSET;
+            BeaconCluster[j].x += BEACON_RADIUS_OFFSET * cos(atan2(cluster_dy, cluster_dx));
+            BeaconCluster[j].y += BEACON_RADIUS_OFFSET * sin(atan2(cluster_dy, cluster_dx));
         }
     }
 }

@@ -509,6 +509,24 @@ void serial_ComRobot()
   serial_commands.send_command("lpts", (float)lidar.getLastScanPointCount());
   serial_commands.send_command("lhz", lidar.getScanRate());
 
+  // Send full LIDAR scan every 2 seconds (720 points)
+  static unsigned long last_scan_send = 0;
+  if (millis() - last_scan_send >= 1000) {
+    last_scan_send = millis();
+    // Send start marker with total number of points
+    serial_commands.send_command("LS", 720.0f);
+    serial_commands.flush();
+    // Send non-zero points as "Li index; Ld distance;" pairs
+    for (int i = 0; i < 720; i++) {
+      float val = (float)ekf.LaserValues(0, i);
+      serial_commands.send_command("Li", (float)i);
+      serial_commands.send_command("Ld", val);
+    }
+    // Send end marker
+    serial_commands.send_command("LE", 1.0f);
+    serial_commands.flush();
+  }
+
   pars_list.send_sparse_commands(serial_commands);
 
   serial_commands.send_command("dbg", 5.0f); 
@@ -535,7 +553,7 @@ void processLidarData()
     float* scanData = lidar.get360Scan();
     
     // Copy to EKF laser values array
-    for (int i = 0; i < 360; i++) {
+    for (int i = 0; i < 720; i++) {
       ekf.LaserValues(0, i) = scanData[i];
     }
     
@@ -575,6 +593,11 @@ bool initYDLidar()
   Serial.print(LIDAR_TX_PIN);
   Serial.print(", RX=");
   Serial.println(LIDAR_RX_PIN);
+
+  
+  //lidar.setOutlierFilterEnabled(true);   // Enable filtering
+  //lidar.setOutlierFilterParams(2, 5); 
+  //lidar.setTemporalPersistence(0);
   
   // Start scanning
   lidar.start();
@@ -783,9 +806,9 @@ void loop() {
     // Process beacon detection when scan is complete
     if (scanDone) {
       scanDone = false;
-      ekf.phaseAV();
-      serial_Beacons();
-      ekf.motionmodelEKF();
+      //ekf.phaseAV();
+      //serial_Beacons();
+      // ekf.motionmodelEKF();
     }
 
     // Update pose for followLine controller

@@ -221,12 +221,14 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
     // State transitions
     switch (followLineState) {
         case Follow_Line:
-            if (behindStart || distLine > DIST_NEWLINE) {
-                followLineState = Goto_NearXY;
-                state = Rotation;
-            } else if (pastEnd || error_dist < 10.0 * TOL_FINDIST) {
-                followLineState = Approaching;
-            }
+            // if (behindStart || distLine > DIST_NEWLINE) {
+            //     followLineState = Goto_NearXY;
+            //     state = Rotation;
+            // } else if (pastEnd || error_dist < 10.0 * TOL_FINDIST) {
+            //     followLineState = Approaching;
+            // }
+            if ( error_dist < DIST_DA) 
+                 followLineState = Approaching;
             break;
 
         case Approaching:
@@ -235,7 +237,12 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
                 state = Rotation;
             }
             // Past end of segment - hand off to gotoXY to reach final point
-            else if (pastEnd) {
+            else if (pastEnd && error_dist < DIST_DA) {
+                followLineState = Final_Rot_FL;
+                state = De_Accel;  // Start in De_Accel since we're close
+            }
+            // Past end and far from target - still hand off but start from Rotation
+            else if (pastEnd && error_dist >= DIST_DA) {
                 followLineState = Final_Rot_FL;
                 state = Rotation;
             }
@@ -264,10 +271,13 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
             break;
 
         case Goto_NearXY:
-            if (distLine < DIST_NEARLINE && !behindStart) {
+            // Return to Follow_Line when close enough to the line
+            if (distLine < DIST_NEARLINE && !behindStart && !pastEnd) {
                 followLineState = Follow_Line;
             }
-            if (behindStart && state == StopState) {
+            // gotoXY finished (reached near point) - return to Follow_Line
+            // even if not perfectly on the line
+            else if (state == StopState) {
                 followLineState = Follow_Line;
                 state = Rotation;
             }
