@@ -8,13 +8,14 @@ double MeasureDist;
 TPos MeasurePos;
 
 EKF::EKF() {
-    // Time step (40 ms)
+
     dt = 0.04;
     
-    // LIDAR data storage
-    LaserValues.Fill(0.0);
+    // LaserValues.Fill(0.0);
+    for (int i = 0; i < 720; i++) {
+        LaserValues[i] = -1.0;
+    }
 
-    // Identity matrix [3x3]
     I.Fill(0.0);
     I(0, 0) = 1.0;
     I(1, 1) = 1.0;
@@ -33,7 +34,6 @@ EKF::EKF() {
     R(0, 0) = pow(0.05, 2);   // Measurement noise for distance (m²)
     R(1, 1) = pow(0.02, 2);   // Measurement noise for angle (rad²)
 
-    // Set known beacon positions in world frame
     BeaconPos[0].x = -0.8985;  BeaconPos[0].y = -0.6485;
     BeaconPos[1].x = -0.8985;  BeaconPos[1].y = 0.6485;
     BeaconPos[2].x = 0;        BeaconPos[2].y = -0.6485;     
@@ -41,7 +41,6 @@ EKF::EKF() {
     BeaconPos[4].x = 0.8985;   BeaconPos[4].y = -0.6485;
     BeaconPos[5].x = 0.8985;   BeaconPos[5].y = 0.6485;
 
-    // Initialize beacon clusters
     for (int j = 0; j < NBEACONS; j++) {
         BeaconCluster[j].x = 0.0;
         BeaconCluster[j].y = 0.0;
@@ -59,16 +58,13 @@ EKF::EKF() {
     XR(1) = -0.355;
     XR(2) = PI/2;   
 
-    // Initialize state transition Jacobian [3x3]
     grad_f_X.Fill(0.0);
     grad_f_X(0, 0) = 1.0;
     grad_f_X(1, 1) = 1.0;
     grad_f_X(2, 2) = 1.0;
 
-    // Initialize input Jacobian [3x2]
     grad_f_q.Fill(0.0);
 
-    // Initialize measurement Jacobian [2x3]
     grad_h_X.Fill(0.0);
 }
 
@@ -176,7 +172,7 @@ bool EKF::isInnovationValid(double distInnovation, double angleInnovation) {
 #define LIDAR_TO_ROBOT_OFFSET 0.005f   // Distance from LIDAR center to robot center (m)
 #define LIDAR_CCW false                  // true if angles increase counter-clockwise
 #define LIDAR_ANGLE_OFFSET 0            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
-#define ASSOCIATION_THRESHOLD 0.20     // Max distance to associate point with beacon (m)
+#define ASSOCIATION_THRESHOLD 0.10     // Max distance to associate point with beacon (m)
 #define BEACON_RADIUS_OFFSET 0.042       // Offset for beacon center (m)
 
 void EKF::phaseAV() {
@@ -188,52 +184,37 @@ void EKF::phaseAV() {
         BeaconCluster[j].dist = 0.0;
         BeaconCluster[j].angle = 0.0;
     }
+
     
-    // For each known beacon, search for corresponding LIDAR points
     for (int j = 0; j < NBEACONS; j++) {
-        // Compute expected angle to beacon in robot frame
         double dx = BeaconPos[j].x - XR(0) - LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
         double dy = BeaconPos[j].y - XR(1) - LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
-        
-        // Expected angle in robot frame (radians, -PI to PI)
         double expectedAngle = normalizeAngle(atan2(dy, dx) - XR(2));
         
-        // Convert to LIDAR index (0-719, at 0.5 deg per bin)
         int idx_beacon_half = (int)round(expectedAngle * 180.0 / M_PI * 2.0);
         
-        // Apply LIDAR angle convention
         if (LIDAR_CCW) {
             idx_beacon = idx_beacon_half;
         } else {
             idx_beacon = -idx_beacon_half;
         }
         
-        // Add any mounting offset (converted to 0.5 deg units)
-        idx_beacon += LIDAR_ANGLE_OFFSET * 2;
-        
-        // Normalize to 0-719 range
-        while (idx_beacon < 0) idx_beacon += 720;
-        idx_beacon = idx_beacon % 720;
-        
-        // Search window around expected angle
         BeaconCluster[j].firstRay = idx_beacon - deltaRay;
         if (BeaconCluster[j].firstRay < 0) {
             BeaconCluster[j].firstRay += 720;
         }
 
-        // Search through LIDAR rays in window
         for (int i = 0; i < 2 * deltaRay; i++) {
             idx = (BeaconCluster[j].firstRay + i) % 720;
             
-            MeasureDist = LaserValues(0, idx);  // Distance in meters
+            // MeasureDist = LaserValues(0, idx); 
+            MeasureDist = LaserValues[idx];
             
-            // Skip invalid measurements
-            // YDLidar X4 range: 0.12m to 10m
+            
             if (MeasureDist < 0.03 || MeasureDist > 2.5) { 
                 continue;
             }
             
-            // Convert LIDAR index back to angle in radians (0.5 deg per bin)
             double rayAngleDeg = (double)idx * 0.5;
             double rayAngleRad;
             
@@ -243,19 +224,22 @@ void EKF::phaseAV() {
                 rayAngleRad = -(rayAngleDeg - LIDAR_ANGLE_OFFSET) * M_PI / 180.0;
             }
             
-            // Convert LIDAR point to world coordinates
             MeasurePos.x = MeasureDist * cos(rayAngleRad + XR(2)) + XR(0) + LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
             MeasurePos.y = MeasureDist * sin(rayAngleRad + XR(2)) + XR(1) + LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
             
-            // Check if this point is close to the expected beacon position
             double distToBeacon = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
             
             if (distToBeacon < ASSOCIATION_THRESHOLD) {
-                // Update cluster with running mean
+                
                 BeaconCluster[j].n++;
                 double n = BeaconCluster[j].n;
                 BeaconCluster[j].x = BeaconCluster[j].x * (n - 1) / n + MeasurePos.x / n;
                 BeaconCluster[j].y = BeaconCluster[j].y * (n - 1) / n + MeasurePos.y / n;
+
+                // Serial.print("Cluster_x: ");
+                // Serial.print(BeaconCluster[j].x );
+                // Serial.print(" Cluster_y: ");
+                // Serial.println(BeaconCluster[j].y);
             }
         }
 
@@ -272,6 +256,8 @@ void EKF::phaseAV() {
     }
 }
 
+
+
 void EKF::motionmodelEKF() {
     for (int j = 0; j < NBEACONS; j++) {
         if (BeaconCluster[j].n >= MIN_BEACON_POINTS) {
@@ -279,3 +265,37 @@ void EKF::motionmodelEKF() {
         }
     }
 }
+
+void EKF::setScan(const float* ang, const float* dist, uint16_t n) {
+    // Reset all bins
+    for (int i = 0; i < 720; i++) {
+        LaserValues[i] = -1.0;
+    }
+
+    for (uint16_t i = 0; i < n; i++) {
+        float distance = dist[i];
+        float angleRad = ang[i];  // Already normalized to [-π, +π]
+        float angleDeg = angleRad * 180.0f / M_PI;
+
+        //Serial.print("Scan point "); Serial.print(i); Serial.print(": angleDeg="); Serial.print(angleDeg, 2); Serial.print(" dist="); Serial.println(distance, 3);
+            
+        
+
+        int bin = (int)lroundf(-angleDeg * 2.0f);     
+        bin = bin % 720;     
+
+        LaserValues[bin] = distance;
+
+        //Serial.print("Mapped to bin "); Serial.print(bin); Serial.print(": angleDeg="); Serial.print(-bin * 0.5f, 2); Serial.print(" dist="); Serial.println(distance, 3);
+    }
+
+    // Serial.println("---- LaserValues dump: idx, angleDeg, dist ----");
+    // for (int idx = 0; idx < 720; idx++) {
+    //     Serial.print("idx=");
+    //     Serial.print(idx);
+    //     Serial.print(" dist=");
+    //     Serial.println(LaserValues[idx], 3);          // -1.000 means empty
+    // }
+
+}  
+

@@ -116,7 +116,8 @@ public:
     BLA::Matrix<NObs, NObs, double> S;
 
     // LIDAR measurements array [1x720] - range values in meters (0.5° resolution)
-    BLA::Matrix<1, 720, double> LaserValues;
+    //BLA::Matrix<1, 720, double> LaserValues;
+    float LaserValues[720];  // Raw array - much faster!
     
     // Known beacon positions in world frame
     TPos BeaconPos[NBEACONS];
@@ -150,6 +151,17 @@ public:
     
     // Process all detected beacons for EKF update
     void motionmodelEKF();
+
+    static const int MAX_SCAN_POINTS = 1024;
+    uint16_t scan_n = 0;
+    float scan_ang[MAX_SCAN_POINTS];   // radians in lidar frame
+    float scan_dist[MAX_SCAN_POINTS];  // meters
+    bool scan_valid = false;
+
+    void setScan(const float* ang, const float* dist, uint16_t n);
+    
+    float minDeg =  1e9f;
+    float maxDeg = -1e9f;
 
 private:
     // Helper: compute expected measurement for a beacon

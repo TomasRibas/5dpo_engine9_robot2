@@ -1,15 +1,18 @@
 /*
  * YDLidar X4 Driver for Arduino
- * Based on 5DPO ROS driver
- * WITH TIMEOUT-BASED TEMPORAL FILTERING
+ * State machine exactly matching ROS driver
  */
 
 #pragma once
 
 #include "Arduino.h"
+#include <iostream>
+#include <functional>
+#include <vector>
 
 // Maximum samples per scan (~720 for X4 at 0.5° resolution)
 #define YDLIDAR_MAX_SAMPLES 800
+const size_t kLaserScanMaxNumSamplesYDLIDARX4 = 1024;//4096;
 
 // Result codes
 #define RESULT_OK       0
@@ -18,9 +21,9 @@
 
 typedef uint8_t result_t;
 
-// State machine states for parsing
+// State machine states - EXACTLY MATCHING ROS DRIVER
 enum class YDLidarState {
-  kIdle,
+  kIddle,  // Note: Matches ROS typo "kIddle" instead of "kIdle"
   kPH1,    // Package header byte 1 (0xAA)
   kPH2,    // Package header byte 2 (0x55)
   kCT,     // Package type
@@ -67,8 +70,6 @@ public:
   
   // Get 720-point scan (0.5° resolution) in meters
   // Returns pointer to array of 720 values (one per 0.5 degree)
-  float* get360Scan() { return full_scan_m_; }
-  
   // Check if a new 360° scan is ready
   bool isScanReady() { return scan_360_ready_; }
   
@@ -83,33 +84,16 @@ public:
   
   // Get number of points in last complete scan
   uint16_t getLastScanPointCount() { return last_point_count_; }
-  
-  // ========== OUTLIER FILTERING FUNCTIONS ==========
-  
-  // Enable/disable outlier filtering (enabled by default)
-  void setOutlierFilterEnabled(bool enabled);
-  
-  // Set outlier filter parameters
-  // min_neighbors: minimum number of nearby points required (default: 2)
-  // angle_window: angular window in bins to check for neighbors (default: 5 = ±2.5°)
-  void setOutlierFilterParams(int min_neighbors, int angle_window);
-  
-  // ========== TEMPORAL PERSISTENCE CONTROL ==========
-  
-  // Set how many scans to keep old data before clearing it
-  // Default: 3 scans (~150ms at 5Hz)
-  // Higher = more stable but slower to remove ghost beacons
-  // Lower = faster removal but more flickering
-  void setTemporalPersistence(int num_scans);
-  
-  // =================================================
 
-private:
+  // NEW: Get raw point arrays (ROS style)
+  // float* getDistances() { return dist_data; }
+  // float* getAngles() { return ang_data; }
+  uint16_t getPointCount() { return data_count; }
+
+//private:
   void processSerialByte(uint8_t ch);
   void processLaserPackage();
   void finalizeScan();
-  void filterOutliers();
-  void updateTemporalPersistence();
   float rawAngleToFloat(uint16_t raw_angle);
   float normalizeAngle(float angle);
   
@@ -117,34 +101,76 @@ private:
   YDLidarState state_;
   
   // Package parsing variables
-  bool pkg_is_start_;           // Is this a scan start package?
-  uint8_t pkg_num_samples_;     // Number of samples in current package
-  uint16_t raw_start_angle_;    // Raw start angle from package
-  uint16_t raw_end_angle_;      // Raw end angle from package
-  float start_angle_;           // Parsed start angle (degrees)
-  float end_angle_;             // Parsed end angle (degrees)
-  uint16_t pkg_checksum_;       // Package checksum
-  uint16_t raw_distances_[40];  // Raw distance data for current package (max 40 samples per pkg)
-  uint8_t sample_count_;        // Current sample being read
-  
+  uint16_t sample_count_;        // Current sample being read
+  bool pkg_zero_;          
+  uint16_t pkg_num_samples_;     // Number of samples in current package
+  uint16_t pkg_check_code_;       // Package checksum
+  uint32_t raw_start_ang_;    // Raw start angle from package
+  uint32_t raw_end_ang_;      // Raw end angle from package
+  float start_ang_;           // Parsed start angle (degrees)
+  float  end_ang_;             // Parsed end angle (degrees)
+  uint32_t raw_dist_data_[kLaserScanMaxNumSamplesYDLIDARX4];
+
+  std::vector<float> dist_data;
+  std::vector<float> ang_data;
+  size_t data_count = 0;
+
+  inline static float rawStartEndAng2Double(const uint32_t& raw_angle) {
+    return static_cast<float>(raw_angle) / 64.0f;  // >> 1 already in raw data
+  }
+  inline static float rawDist2Double(const uint32_t& raw_dist) {
+    return static_cast<float>(raw_dist) / 4.0f;
+  }
+
+  inline float normAngDeg(float angle) {
+    // Source: https://stackoverflow.com/a/11498248
+    angle = fmodf(angle + 180.0f, 360.0f);
+    if (angle < 0) {
+      angle += 360.0f;
+    }
+    return angle - 180.0f;
+  }
+
+  inline double normAngDeg(double angle) {
+    // Source: https://stackoverflow.com/a/11498248
+    angle = fmod(angle + 180.0, 360.0);
+    if (angle < 0) {
+      angle += 360.0;
+    }
+    return angle - 180.0;
+  }
+
+  inline float normAngRad(float angle) {
+    // Source: https://stackoverflow.com/a/11498248
+    angle = fmodf(angle + M_PI, M_PI * 2.0f);
+    if (angle < 0) {
+      angle += M_PI * 2.0f;
+    }
+    return angle - M_PI;
+  }
+
+  inline double normAngRad(double angle) {
+    // Source: https://stackoverflow.com/a/11498248
+    angle = fmod(angle + M_PI, M_PI * 2.0);
+    if (angle < 0) {
+      angle += M_PI * 2.0;
+    }
+    return angle - M_PI;
+  }
+   
+ 
   // 720-point binned scan (0.5° resolution)
-  float full_scan_mm_[720];     // Accumulation buffer in mm
-  float full_scan_m_[720];      // Final output in meters
+  // float full_scan_mm_[720];     // Accumulation buffer in mm
+  // float full_scan_m_[720];      // Final output in meters
   bool scan_360_ready_;         // Flag for 360° scan completion
-  uint16_t total_points_;       // Total points accumulated in current scan
+  // float dist_data[2000];  // Distances in meters
+  // float ang_data[2000];   // Angles in radians
+  //uint16_t data_count;    // Current number of points
+  //uint16_t total_points_;       // Total points accumulated in current scan
   
   // Timing and statistics
   unsigned long last_scan_time_;
   float scan_rate_;
   unsigned long num_scans_;
   uint16_t last_point_count_;
-  
-  // Outlier filtering parameters
-  bool enable_outlier_filter_;
-  int outlier_neighbor_threshold_;  // Minimum neighbors required
-  int outlier_angle_window_;        // Angular window to check (in bins)
-  
-  // Temporal persistence tracking
-  uint8_t scan_age_[720];           // How many scans since last update for each bin
-  int temporal_persistence_limit_;   // Max scans to keep old data
 };

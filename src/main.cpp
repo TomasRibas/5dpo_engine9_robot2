@@ -1,36 +1,3 @@
-/* Pi Pico Main - Full Communication with RPi4
-   
-   UPDATED VERSION - Using YDLidar X4 with YDLidarX4 driver
-   
-   Serial Ports:
-   - Serial  (USB): Communication with RPi4
-   - Serial1 (UART): YDLidar X4 at 128000 baud
-   
-   YDLidar X4 Specs:
-   - Baud rate: 128000
-   - Scan frequency: 6-12 Hz (adjustable, default ~7Hz)
-   - Range: 0.12m - 10m
-   - Angular resolution: 0.5°
-   - 720 points per scan (0.5° resolution)
-   
-   FollowLine Segment Commands:
-   - fxi, fyi, fxf, fyf, ftf : Set followLine segment parameters
-   - flrst : Reset followLine state machine (val=1 to reset and enable)
-   - flen : Enable/disable followLine (1=enable, 0=disable)
-   
-   Pose Reset Commands:
-   - rpose : Reset all pose values (odometry + EKF) to EKF values
-   - rpdef : Reset pose to default (-0.785, -0.57, 1.57)
-   - setpose x,y,theta : Sets both odom & EKF to specified values
-   
-   FollowLine Tuning Constants (saved with 'ps' command):
-   - van, vln, wda, lda : Velocity constants
-   - metf, hetf, gfwd, dda, gda : Angle thresholds and gains
-   - tfd, dnp, tnp, tda, tft : Distance thresholds
-   - dnl, dnel : Line following thresholds
-   - kdst, kang : Line following omega gains
-*/
-
 #include <Arduino.h>
 #include <WiFi.h>
 #include <RPi_Pico_TimerInterrupt.h>
@@ -55,8 +22,6 @@ YDLidarX4 lidar;
 // YDLidar X4 configuration
 #define YDLIDAR_BAUDRATE 128000
 
-// Serial1 pins for YDLidar (Pi Pico)
-// Default UART0 pins: TX=0, RX=1
 #define LIDAR_TX_PIN 0   // Pico TX -> LIDAR RX
 #define LIDAR_RX_PIN 1   // Pico RX -> LIDAR TX
 
@@ -100,14 +65,12 @@ const char *pars_fname = "pars.cfg";
 bool load_pars_requested = false;
 bool gotoXY_req = false;
 
-// Scan monitoring
 volatile bool scanDone = false;
 unsigned long n_scans = 0;
 unsigned long last_scan_time = 0;
 unsigned long scan_interval_ms = 0;
 int points_in_scan = 0;
 
-// LIDAR status
 bool lidarStarted = false;
 
 // =============================================================================
@@ -482,47 +445,55 @@ void serial_Beacons(){
 
 void serial_ComRobot()
 {
-  serial_commands.send_command("Vbat", robot.battery_voltage);
+  // serial_commands.send_command("Vbat", robot.battery_voltage);
 
-  serial_commands.send_command("Xst", ekf.XR(0));
-  serial_commands.send_command("Yst", ekf.XR(1));
-  serial_commands.send_command("Thetast", ekf.XR(2));
+  // serial_commands.send_command("Xst", ekf.XR(0));
+  // serial_commands.send_command("Yst", ekf.XR(1));
+  // serial_commands.send_command("Thetast", ekf.XR(2));
 
-  serial_commands.send_command("xe", robot.xe);
-  serial_commands.send_command("ye", robot.ye);
-  serial_commands.send_command("te", robot.thetae);
+  // serial_commands.send_command("xe", robot.xe);
+  // serial_commands.send_command("ye", robot.ye);
+  // serial_commands.send_command("te", robot.thetae);
 
-  // FollowLine state feedback
-  serial_commands.send_command("fls", (float)followLineState);
-  serial_commands.send_command("gts", (float)state);
-  serial_commands.send_command("flen", (float)(fl_pars.enabled ? 1 : 0));
+  // serial_commands.send_command("fls", (float)followLineState);
+  // serial_commands.send_command("gts", (float)state);
+  // serial_commands.send_command("flen", (float)(fl_pars.enabled ? 1 : 0));
 
-  serial_commands.send_command("fxi", (float)fl_pars.xi);
-  serial_commands.send_command("fyi", (float)fl_pars.yi);
-  serial_commands.send_command("fxf", (float)fl_pars.xf);
-  serial_commands.send_command("fyf", (float)fl_pars.yf);
-  serial_commands.send_command("ftf", (float)fl_pars.tf);
+  // serial_commands.send_command("fxi", (float)fl_pars.xi);
+  // serial_commands.send_command("fyi", (float)fl_pars.yi);
+  // serial_commands.send_command("fxf", (float)fl_pars.xf);
+  // serial_commands.send_command("fyf", (float)fl_pars.yf);
+  // serial_commands.send_command("ftf", (float)fl_pars.tf);
 
-  // Send scan statistics for debugging
-  serial_commands.send_command("nscn", (float)lidar.getNumScans());
-  serial_commands.send_command("scnms", (float)scan_interval_ms);
-  serial_commands.send_command("lpts", (float)lidar.getLastScanPointCount());
-  serial_commands.send_command("lhz", lidar.getScanRate());
+  // serial_commands.send_command("nscn", (float)lidar.getNumScans());
+  // serial_commands.send_command("scnms", (float)scan_interval_ms);
+  // serial_commands.send_command("lpts", (float)lidar.getLastScanPointCount());
+  // serial_commands.send_command("lhz", lidar.getScanRate());
 
-  // Send full LIDAR scan every 2 seconds (720 points)
   static unsigned long last_scan_send = 0;
   if (millis() - last_scan_send >= 1000) {
     last_scan_send = millis();
-    // Send start marker with total number of points
-    serial_commands.send_command("LS", 720.0f);
+
+    uint16_t npts = lidar.getLastScanPointCount();
+
+    serial_commands.send_command("LS", (float)npts);
     serial_commands.flush();
-    // Send non-zero points as "Li index; Ld distance;" pairs
-    for (int i = 0; i < 720; i++) {
-      float val = (float)ekf.LaserValues(0, i);
+
+    for (uint16_t i = 0; i < npts; i++) {
       serial_commands.send_command("Li", (float)i);
-      serial_commands.send_command("Ld", val);
+      serial_commands.send_command("La", (float)lidar.ang_data[i]);   // radians
+      serial_commands.send_command("Ld", (float)lidar.dist_data[i]);  // meters
     }
-    // Send end marker
+
+    // serial_commands.send_command("LS", 720.0f);
+    // serial_commands.flush();
+
+    // for (int i = 0; i < 720; i++) { 
+    //   float val = ekf.LaserValues[i];
+    //   serial_commands.send_command("Li", (float)i); 
+    //   serial_commands.send_command("Ld", val); 
+    // }
+
     serial_commands.send_command("LE", 1.0f);
     serial_commands.flush();
   }
@@ -537,72 +508,76 @@ void serial_ComRobot()
   http_ota.handle();
 }
 
-// =============================================================================
-// YDLidar X4 Processing - Updated for YDLidarX4 driver
-// =============================================================================
 void processLidarData()
 {
+
   if (!lidarStarted) return;
   
-  // Process available LIDAR data
-  // Returns true when a complete 360° scan is ready
-  bool scanComplete = lidar.processData();
+  lidar.processData();
   
-  if (scanComplete && lidar.isScanReady()) {
-    // Get the 360-degree scan data (already in meters)
-    float* scanData = lidar.get360Scan();
-    
-    // Copy to EKF laser values array
-    for (int i = 0; i < 720; i++) {
-      ekf.LaserValues(0, i) = scanData[i];
-    }
-    
-    // Calculate scan interval
-    unsigned long now = millis();
-    scan_interval_ms = now - last_scan_time;
-    last_scan_time = now;
-    
-    // Mark scan as done for EKF processing
+  // 2) Only consume a scan when your pipeline is ready
+  if (scanDone) return;
+
+  if (lidar.isScanReady()) {
+    //uint16_t n = lidar.getLastScanPointCount();
+    //Serial.print("n: "); Serial.println(n);
+    //ekf.setScan(lidar.ang_data.data(), lidar.dist_data.data(), n);
+
     scanDone = true;
-    n_scans++;
-    points_in_scan = lidar.getLastScanPointCount();
-    
-    // Clear the scan ready flag
-    lidar.clearScanReady();
+    //lidar.clearScanReady();
+    // static uint32_t scan_print_div = 0;
+    // if ((scan_print_div++ % 10) == 0){
+    //   Serial.print("Scan points: ");
+    //   Serial.println(n);
+    //   Serial.print("EFK_DIST ");
+    //   for (uint16_t i = 0; i < n; i++) {
+    //     Serial.print(ekf.scan_dist[i], 3);
+    //     Serial.print(" ");
+    //   }
+    //   Serial.println();
+    // }
+   
+    // Print summary once per scan (or throttle)
+    // static uint32_t scan_print_div = 0;
+    // if ((scan_print_div++ % 10) == 0) { // every 10 scans
+    //   Serial.print("raw_points=");
+    //   Serial.print(raw_points);
+    //   Serial.print(" filled_bins=");
+    //   Serial.print(filled_bins);
+    //   Serial.print(" bad_dist=");
+    //   Serial.print(bad_dist);
+    //   Serial.print(" out_idx=");
+    //   Serial.print(out_of_range_idx);
+    //   Serial.print(" collisions=");
+    //   Serial.print(collisions);
+
+    //   Serial.print(" | ang(rad) min/max=");
+    //   Serial.print(min_ang, 3); Serial.print("/");
+    //   Serial.print(max_ang, 3);
+
+    //   Serial.print(" dist min/max=");
+    //   Serial.print(min_d, 3); Serial.print("/");
+    //   Serial.println(max_d, 3);
+    // }
   }
+  lidar.clearScanReady();
 }
 
-// =============================================================================
-// Initialize YDLidar - Simplified for YDLidarX4 driver
-// =============================================================================
+
 bool initYDLidar()
 {
-  Serial.println("Initializing YDLidar X4...");
-  
-  // Set Serial1 pins for Pi Pico
+  Serial1.setFIFOSize(1024);
+
   Serial1.setTX(LIDAR_TX_PIN);
   Serial1.setRX(LIDAR_RX_PIN);
-  
-  // Initialize LIDAR on Serial1
-  if (!lidar.begin(Serial1, YDLIDAR_BAUDRATE)) {
-    Serial.println("YDLidar begin failed");
-    return false;
-  }
-  
-  Serial.print("YDLidar using pins TX=");
-  Serial.print(LIDAR_TX_PIN);
-  Serial.print(", RX=");
-  Serial.println(LIDAR_RX_PIN);
 
+
+  lidar.begin(Serial1, YDLIDAR_BAUDRATE);
   
-  //lidar.setOutlierFilterEnabled(true);   // Enable filtering
-  //lidar.setOutlierFilterParams(2, 5); 
-  //lidar.setTemporalPersistence(0);
-  
-  // Start scanning
+  delay(50); 
   lidar.start();
+
   lidarStarted = true;
-  Serial.println("YDLidar X4 scanning started");
   
   return true;
 }
@@ -644,42 +619,37 @@ void setup() {
   // FollowLine Tuning Constants
   // =========================================================================
   
-  // Velocity constants
   pars_list.register_command("van", &VEL_ANG_NOM);
   pars_list.register_command("vln", &VEL_LIN_NOM);
   pars_list.register_command("wda", &W_DA);
   pars_list.register_command("lda", &LinDeAccel);
   
-  // Angle thresholds and gains
   pars_list.register_command("metf", &MAX_ETF);
   pars_list.register_command("hetf", &HIST_ETF);
   pars_list.register_command("gfwd", &GAIN_FWD);
   pars_list.register_command("dda", &DIST_DA);
   pars_list.register_command("gda", &GAIN_DA);
   
-  // Distance thresholds
   pars_list.register_command("tfd", &TOL_FINDIST);
   pars_list.register_command("dnp", &DIST_NEWPOSE);
   pars_list.register_command("tnp", &THETA_NEWPOSE);
   pars_list.register_command("tda", &THETA_DA);
   pars_list.register_command("tft", &TOL_FINTHETA);
   
-  // Line following thresholds
   pars_list.register_command("dnl", &DIST_NEWLINE);
   pars_list.register_command("dnel", &DIST_NEARLINE);
 
-  // Line following omega gains
   pars_list.register_command("kdst", &K_DIST);
   pars_list.register_command("kang", &K_ANG);
 
   udp_commands.init(process_command, serial_write);
   serial_commands.init(process_command, serial_write);
 
-  // Initialize followLine parameters
   init_followline_pars();
 
   Serial.begin(115200);
-  // Note: Serial1 is initialized by YDLidar library
+  initYDLidar();
+
 
   LittleFS.begin();
   
@@ -723,12 +693,7 @@ void setup() {
   }
 
   initializeMotors();
-  
-  // Initialize YDLidar X4
-  if (!initYDLidar()) {
-    Serial.println("WARNING: YDLidar initialization failed!");
-    Serial.println("Use 'lidar 1;' command to retry later");
-  }
+
 
   Wire.setSDA(4);
   Wire.setSCL(5);
@@ -789,32 +754,29 @@ void loop() {
     }      
   }
 
-  // ==========================================================================
-  // Process YDLidar X4 data
-  // ==========================================================================
   processLidarData();
 
-  // Control loop at fixed interval (40ms = 25Hz)
   currentMicros = micros();
   if (currentMicros - previousMicros >= interval) {
     previousMicros = currentMicros;
 
+    //Serial.println("AAAAAAAAA");
+
     read_PIO_encoders();
     robot.odometry(); 
+    
     ekf.predict(robot.ve, robot.we, robot.dt);
+    
 
-    // Process beacon detection when scan is complete
     if (scanDone) {
       scanDone = false;
-      //ekf.phaseAV();
+      ekf.phaseAV();
       //serial_Beacons();
-      // ekf.motionmodelEKF();
+      //ekf.motionmodelEKF();
     }
 
-    // Update pose for followLine controller
     setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));
 
-    // Auto-detect parameter changes and reset state machine
     static float last_xi = fl_pars.xi;
     static float last_yi = fl_pars.yi;
     static float last_xf = fl_pars.xf;
@@ -822,15 +784,13 @@ void loop() {
     static float last_tf = fl_pars.tf;
     
     if (fl_pars.enabled) {
-        // Check if any parameter changed
+
         if (fl_pars.xi != last_xi || fl_pars.yi != last_yi ||
             fl_pars.xf != last_xf || fl_pars.yf != last_yf ||
             fl_pars.tf != last_tf) {
-                        
-  
+
             resetFollowLine();
 
-            // Update tracked values
             last_xi = fl_pars.xi;
             last_yi = fl_pars.yi;
             last_xf = fl_pars.xf;
@@ -839,13 +799,11 @@ void loop() {
         }
     }
         
-    // Handle followLine reset request
     if (fl_pars.reset_requested) {
       fl_pars.reset_requested = false;
       resetFollowLine();
     }
 
-    // Run followLine if enabled
     if (fl_pars.enabled) {
       followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf);
     }
