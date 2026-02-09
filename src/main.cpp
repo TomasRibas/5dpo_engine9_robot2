@@ -447,52 +447,42 @@ void serial_ComRobot()
 {
   // serial_commands.send_command("Vbat", robot.battery_voltage);
 
-  // serial_commands.send_command("Xst", ekf.XR(0));
-  // serial_commands.send_command("Yst", ekf.XR(1));
-  // serial_commands.send_command("Thetast", ekf.XR(2));
+  serial_commands.send_command("Xst", ekf.XR(0));
+  serial_commands.send_command("Yst", ekf.XR(1));
+  serial_commands.send_command("Thetast", ekf.XR(2));
 
   // serial_commands.send_command("xe", robot.xe);
   // serial_commands.send_command("ye", robot.ye);
   // serial_commands.send_command("te", robot.thetae);
 
-  // serial_commands.send_command("fls", (float)followLineState);
-  // serial_commands.send_command("gts", (float)state);
-  // serial_commands.send_command("flen", (float)(fl_pars.enabled ? 1 : 0));
+  serial_commands.send_command("fls", (float)followLineState);
+  serial_commands.send_command("gts", (float)state);
+  serial_commands.send_command("flen", (float)(fl_pars.enabled ? 1 : 0));
 
-  // serial_commands.send_command("fxi", (float)fl_pars.xi);
-  // serial_commands.send_command("fyi", (float)fl_pars.yi);
-  // serial_commands.send_command("fxf", (float)fl_pars.xf);
-  // serial_commands.send_command("fyf", (float)fl_pars.yf);
-  // serial_commands.send_command("ftf", (float)fl_pars.tf);
+  serial_commands.send_command("fxi", (float)fl_pars.xi);
+  serial_commands.send_command("fyi", (float)fl_pars.yi);
+  serial_commands.send_command("fxf", (float)fl_pars.xf);
+  serial_commands.send_command("fyf", (float)fl_pars.yf);
+  serial_commands.send_command("ftf", (float)fl_pars.tf);
 
-  // serial_commands.send_command("nscn", (float)lidar.getNumScans());
-  // serial_commands.send_command("scnms", (float)scan_interval_ms);
-  // serial_commands.send_command("lpts", (float)lidar.getLastScanPointCount());
-  // serial_commands.send_command("lhz", lidar.getScanRate());
+  serial_commands.send_command("nscn", (float)lidar.getNumScans());
+  serial_commands.send_command("scnms", (float)scan_interval_ms);
+  serial_commands.send_command("lpts", (float)lidar.getLastScanPointCount());
+  serial_commands.send_command("lhz", lidar.getScanRate());
 
   static unsigned long last_scan_send = 0;
   if (millis() - last_scan_send >= 1000) {
     last_scan_send = millis();
 
-    uint16_t npts = lidar.getLastScanPointCount();
 
-    serial_commands.send_command("LS", (float)npts);
+    serial_commands.send_command("LS", ekf.scanN);
     serial_commands.flush();
 
-    for (uint16_t i = 0; i < npts; i++) {
+    for (uint16_t i = 0; i < ekf.scanN; i++) {
       serial_commands.send_command("Li", (float)i);
-      serial_commands.send_command("La", (float)lidar.ang_data[i]);   // radians
-      serial_commands.send_command("Ld", (float)lidar.dist_data[i]);  // meters
+      serial_commands.send_command("La", (float)ekf.scanPts[i].ang);   // radians
+      serial_commands.send_command("Ld", (float)ekf.scanPts[i].dist);  // meters
     }
-
-    // serial_commands.send_command("LS", 720.0f);
-    // serial_commands.flush();
-
-    // for (int i = 0; i < 720; i++) { 
-    //   float val = ekf.LaserValues[i];
-    //   serial_commands.send_command("Li", (float)i); 
-    //   serial_commands.send_command("Ld", val); 
-    // }
 
     serial_commands.send_command("LE", 1.0f);
     serial_commands.flush();
@@ -519,12 +509,33 @@ void processLidarData()
   if (scanDone) return;
 
   if (lidar.isScanReady()) {
-    //uint16_t n = lidar.getLastScanPointCount();
+    uint16_t n = lidar.getLastScanPointCount();
     //Serial.print("n: "); Serial.println(n);
-    //ekf.setScan(lidar.ang_data.data(), lidar.dist_data.data(), n);
+    ekf.setScan(lidar.ang_data.data(), lidar.dist_data.data(), n);
 
+    // static bool printedOnce = false;
+
+    // if (!printedOnce) {
+    //   printedOnce = true;
+
+    //   Serial.print("scanN=");
+    //   Serial.println(ekf.scanN);
+
+    //   for (uint16_t i = 0; i < ekf.scanN; i++) {
+    //     Serial.print("i=");
+    //     Serial.print(i);
+    //     Serial.print(" angRad=");
+    //     Serial.print(ekf.scanPts[i].ang, 6);
+    //     Serial.print(" angDeg=");
+    //     Serial.print(ekf.scanPts[i].ang * 180.0f / M_PI, 2);
+    //     Serial.print(" dist=");
+    //     Serial.println(ekf.scanPts[i].dist, 3);
+    //   }
+
+    //   Serial.println("---- end scanPts dump ----");
+    // }
     scanDone = true;
-    //lidar.clearScanReady();
+
     // static uint32_t scan_print_div = 0;
     // if ((scan_print_div++ % 10) == 0){
     //   Serial.print("Scan points: ");
@@ -771,8 +782,8 @@ void loop() {
     if (scanDone) {
       scanDone = false;
       ekf.phaseAV();
-      //serial_Beacons();
-      //ekf.motionmodelEKF();
+      serial_Beacons();
+      ekf.motionmodelEKF();
     }
 
     setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));

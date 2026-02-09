@@ -80,6 +80,14 @@ public:
     double vlin_prev, omega_prev;
     double t, dt, w, theta;
     double error_dist_prev;
+    struct ScanPoint {
+        float ang;   // radians [-pi, pi]
+        float dist;  // meters
+    };
+
+    static const int MAX_SCAN_POINTS = 4096;  // pick a safe upper bound
+    ScanPoint scanPts[MAX_SCAN_POINTS];
+    uint16_t scanN = 0;
 
     // Identity matrix [3x3]
     BLA::Matrix<3, 3, double> I;
@@ -152,14 +160,14 @@ public:
     // Process all detected beacons for EKF update
     void motionmodelEKF();
 
-    static const int MAX_SCAN_POINTS = 1024;
+    //static const int MAX_SCAN_POINTS = 1024;
     uint16_t scan_n = 0;
     float scan_ang[MAX_SCAN_POINTS];   // radians in lidar frame
     float scan_dist[MAX_SCAN_POINTS];  // meters
     bool scan_valid = false;
 
     void setScan(const float* ang, const float* dist, uint16_t n);
-    
+
     float minDeg =  1e9f;
     float maxDeg = -1e9f;
 

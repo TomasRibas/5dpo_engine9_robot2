@@ -172,88 +172,184 @@ bool EKF::isInnovationValid(double distInnovation, double angleInnovation) {
 #define LIDAR_TO_ROBOT_OFFSET 0.005f   // Distance from LIDAR center to robot center (m)
 #define LIDAR_CCW false                  // true if angles increase counter-clockwise
 #define LIDAR_ANGLE_OFFSET 0            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
-#define ASSOCIATION_THRESHOLD 0.10     // Max distance to associate point with beacon (m)
+#define ASSOCIATION_THRESHOLD 0.25     // Max distance to associate point with beacon (m)
 #define BEACON_RADIUS_OFFSET 0.042       // Offset for beacon center (m)
 
-void EKF::phaseAV() {
-    // Reset all beacon clusters
-    for (int j = 0; j < NBEACONS; j++) {
-        BeaconCluster[j].x = 0.0;
-        BeaconCluster[j].y = 0.0;
-        BeaconCluster[j].n = 0;
-        BeaconCluster[j].dist = 0.0;
-        BeaconCluster[j].angle = 0.0;
-    }
+// void EKF::phaseAV() {
+//     // Reset all beacon clusters
+//     for (int j = 0; j < NBEACONS; j++) {
+//         BeaconCluster[j].x = 0.0;
+//         BeaconCluster[j].y = 0.0;
+//         BeaconCluster[j].n = 0;
+//         BeaconCluster[j].dist = 0.0;
+//         BeaconCluster[j].angle = 0.0;
+//     }
 
     
-    for (int j = 0; j < NBEACONS; j++) {
-        double dx = BeaconPos[j].x - XR(0) - LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
-        double dy = BeaconPos[j].y - XR(1) - LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
-        double expectedAngle = normalizeAngle(atan2(dy, dx) - XR(2));
+//     for (int j = 0; j < NBEACONS; j++) {
+//         double dx = BeaconPos[j].x - XR(0) - LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
+//         double dy = BeaconPos[j].y - XR(1) - LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
+//         double expectedAngle = normalizeAngle(atan2(dy, dx) - XR(2));
         
-        int idx_beacon_half = (int)round(expectedAngle * 180.0 / M_PI * 2.0);
+//         int idx_beacon_half = (int)round(expectedAngle * 180.0 / M_PI * 2.0);
         
-        if (LIDAR_CCW) {
-            idx_beacon = idx_beacon_half;
-        } else {
-            idx_beacon = -idx_beacon_half;
-        }
+//         if (LIDAR_CCW) {
+//             idx_beacon = idx_beacon_half;
+//         } else {
+//             idx_beacon = -idx_beacon_half;
+//         }
         
-        BeaconCluster[j].firstRay = idx_beacon - deltaRay;
-        if (BeaconCluster[j].firstRay < 0) {
-            BeaconCluster[j].firstRay += 720;
-        }
+//         BeaconCluster[j].firstRay = idx_beacon - deltaRay;
+//         if (BeaconCluster[j].firstRay < 0) {
+//             BeaconCluster[j].firstRay += 720;
+//         }
 
-        for (int i = 0; i < 2 * deltaRay; i++) {
-            idx = (BeaconCluster[j].firstRay + i) % 720;
+//         for (int i = 0; i < 2 * deltaRay; i++) {
+//             idx = (BeaconCluster[j].firstRay + i) % 720;
             
-            // MeasureDist = LaserValues(0, idx); 
-            MeasureDist = LaserValues[idx];
+//             // MeasureDist = LaserValues(0, idx); 
+//             MeasureDist = LaserValues[idx];
             
             
-            if (MeasureDist < 0.03 || MeasureDist > 2.5) { 
-                continue;
-            }
+//             if (MeasureDist < 0.03 || MeasureDist > 2.5) { 
+//                 continue;
+//             }
             
-            double rayAngleDeg = (double)idx * 0.5;
-            double rayAngleRad;
+//             double rayAngleDeg = (double)idx * 0.5;
+//             double rayAngleRad;
             
-            if (LIDAR_CCW) {
-                rayAngleRad = (rayAngleDeg - LIDAR_ANGLE_OFFSET) * M_PI / 180.0;
-            } else {
-                rayAngleRad = -(rayAngleDeg - LIDAR_ANGLE_OFFSET) * M_PI / 180.0;
-            }
+//             if (LIDAR_CCW) {
+//                 rayAngleRad = (rayAngleDeg - LIDAR_ANGLE_OFFSET) * M_PI / 180.0;
+//             } else {
+//                 rayAngleRad = -(rayAngleDeg - LIDAR_ANGLE_OFFSET) * M_PI / 180.0;
+//             }
             
-            MeasurePos.x = MeasureDist * cos(rayAngleRad + XR(2)) + XR(0) + LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
-            MeasurePos.y = MeasureDist * sin(rayAngleRad + XR(2)) + XR(1) + LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
+//             MeasurePos.x = MeasureDist * cos(rayAngleRad + XR(2)) + XR(0) + LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
+//             MeasurePos.y = MeasureDist * sin(rayAngleRad + XR(2)) + XR(1) + LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
             
-            double distToBeacon = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
+//             double distToBeacon = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
             
-            if (distToBeacon < ASSOCIATION_THRESHOLD) {
+//             if (distToBeacon < ASSOCIATION_THRESHOLD) {
                 
-                BeaconCluster[j].n++;
-                double n = BeaconCluster[j].n;
-                BeaconCluster[j].x = BeaconCluster[j].x * (n - 1) / n + MeasurePos.x / n;
-                BeaconCluster[j].y = BeaconCluster[j].y * (n - 1) / n + MeasurePos.y / n;
+//                 BeaconCluster[j].n++;
+//                 double n = BeaconCluster[j].n;
+//                 BeaconCluster[j].x = BeaconCluster[j].x * (n - 1) / n + MeasurePos.x / n;
+//                 BeaconCluster[j].y = BeaconCluster[j].y * (n - 1) / n + MeasurePos.y / n;
 
-                // Serial.print("Cluster_x: ");
-                // Serial.print(BeaconCluster[j].x );
-                // Serial.print(" Cluster_y: ");
-                // Serial.println(BeaconCluster[j].y);
-            }
-        }
+//                 // Serial.print("Cluster_x: ");
+//                 // Serial.print(BeaconCluster[j].x );
+//                 // Serial.print(" Cluster_y: ");
+//                 // Serial.println(BeaconCluster[j].y);
+//             }
+//         }
 
-        // Compute final distance and angle for detected beacons
-        if (BeaconCluster[j].n >= 1) {
-            double cluster_dx = BeaconCluster[j].x - XR(0);
-            double cluster_dy = BeaconCluster[j].y - XR(1);
+//         // Compute final distance and angle for detected beacons
+//         if (BeaconCluster[j].n >= 1) {
+//             double cluster_dx = BeaconCluster[j].x - XR(0);
+//             double cluster_dy = BeaconCluster[j].y - XR(1);
             
-            BeaconCluster[j].angle = normalizeAngle(atan2(cluster_dy, cluster_dx) - XR(2));
-            BeaconCluster[j].dist = sqrt(cluster_dx * cluster_dx + cluster_dy * cluster_dy) + BEACON_RADIUS_OFFSET;
-            BeaconCluster[j].x += BEACON_RADIUS_OFFSET * cos(atan2(cluster_dy, cluster_dx));
-            BeaconCluster[j].y += BEACON_RADIUS_OFFSET * sin(atan2(cluster_dy, cluster_dx));
+//             BeaconCluster[j].angle = normalizeAngle(atan2(cluster_dy, cluster_dx) - XR(2));
+//             BeaconCluster[j].dist = sqrt(cluster_dx * cluster_dx + cluster_dy * cluster_dy) + BEACON_RADIUS_OFFSET;
+//             BeaconCluster[j].x += BEACON_RADIUS_OFFSET * cos(atan2(cluster_dy, cluster_dx));
+//             BeaconCluster[j].y += BEACON_RADIUS_OFFSET * sin(atan2(cluster_dy, cluster_dx));
+//         }
+//     }
+// }
+
+void EKF::phaseAV() {
+
+  // Reset all beacon clusters
+  for (int j = 0; j < NBEACONS; j++) {
+    BeaconCluster[j].x = 0.0;
+    BeaconCluster[j].y = 0.0;
+    BeaconCluster[j].n = 0;
+    BeaconCluster[j].dist = 0.0;
+    BeaconCluster[j].angle = 0.0;
+
+  }
+
+  // For each beacon, try to associate scan points near its expected angle
+  for (int j = 0; j < NBEACONS; j++) {
+
+    int passDist = 0;
+    int passAng  = 0;
+    int passAssoc = 0;
+    double bestAbsAngErr = 1e9;
+    double bestAssocDist = 1e9;
+
+    // Beacon expected angle in robot frame
+    double dx = BeaconPos[j].x - XR(0) - LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
+    double dy = BeaconPos[j].y - XR(1) - LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
+    double expectedAngle = normalizeAngle(atan2(dy, dx) - XR(2)); // [-pi, +pi]
+
+    // Window size: deltaRay bins * 0.5deg per bin -> radians
+    double windowRad = (double)deltaRay * 0.5 * M_PI / 180.0;
+
+
+    // Scan all points you received this scan (no need for 720)
+    for (uint16_t k = 0; k < scanN; k++) {
+
+        double MeasureDist = (double)scanPts[k].dist;
+
+        const double LIDAR_YAW_OFFSET = -5; // <-- tune this (rad)
+        double rayAngleRad = (double)scanPts[k].ang + LIDAR_YAW_OFFSET * M_PI / 180.0; // Convert to radians and add offset
+        rayAngleRad = normalizeAngle(rayAngleRad); 
+
+        if (MeasureDist < 0.03 || MeasureDist > 2.5) continue;
+        passDist++;
+
+        double angErr = fabs(normalizeAngle(rayAngleRad - expectedAngle));
+        if (angErr < bestAbsAngErr) bestAbsAngErr = angErr;
+
+        if (angErr > windowRad) continue;
+        passAng++;
+
+
+        double dAng = normalizeAngle(rayAngleRad - expectedAngle);
+        if (fabs(dAng) > windowRad) continue;
+
+        // Convert measurement to world coordinates
+        MeasurePos.x = MeasureDist * cos(rayAngleRad + XR(2)) + XR(0) + LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
+        MeasurePos.y = MeasureDist * sin(rayAngleRad + XR(2)) + XR(1) + LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
+
+        double distToBeacon = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
+        if (distToBeacon < bestAssocDist) bestAssocDist = distToBeacon;
+
+        if (distToBeacon < ASSOCIATION_THRESHOLD) {
+            passAssoc++;
+
+            BeaconCluster[j].n++;
+            double n = BeaconCluster[j].n;
+
+            BeaconCluster[j].x = BeaconCluster[j].x * (n - 1) / n + MeasurePos.x / n;
+            BeaconCluster[j].y = BeaconCluster[j].y * (n - 1) / n + MeasurePos.y / n;
         }
     }
+
+    // Final distance+angle for this beacon if we saw anything
+    if (BeaconCluster[j].n >= 1) {
+      double cluster_dx = BeaconCluster[j].x - XR(0);
+      double cluster_dy = BeaconCluster[j].y - XR(1);
+
+      BeaconCluster[j].angle = normalizeAngle(atan2(cluster_dy, cluster_dx) - XR(2));
+      BeaconCluster[j].dist  = sqrt(cluster_dx * cluster_dx + cluster_dy * cluster_dy) + BEACON_RADIUS_OFFSET;
+
+      BeaconCluster[j].x += BEACON_RADIUS_OFFSET * cos(atan2(cluster_dy, cluster_dx));
+      BeaconCluster[j].y += BEACON_RADIUS_OFFSET * sin(atan2(cluster_dy, cluster_dx));
+    }
+
+    // Serial.print("[Beacon "); Serial.print(j);
+    // // Serial.print("] passDist="); Serial.print(passDist);
+    // // Serial.print(" passAng="); Serial.print(passAng);
+    // // Serial.print(" passAssoc="); Serial.print(passAssoc);
+    // // Serial.print(" bestAngErrDeg="); Serial.print(bestAbsAngErr * 180.0 / M_PI, 2);
+    // // Serial.print(" bestAssocDist="); Serial.println(bestAssocDist, 3);
+
+    // Serial.print("Beacon "); Serial.print(j);
+    // Serial.print(": nPts="); Serial.print(BeaconCluster[j].n);
+    // Serial.print(" x="); Serial.print(BeaconCluster[j].x, 3);
+    // Serial.print(" y="); Serial.println(BeaconCluster[j].y, 3);
+  }
 }
 
 
@@ -267,35 +363,14 @@ void EKF::motionmodelEKF() {
 }
 
 void EKF::setScan(const float* ang, const float* dist, uint16_t n) {
-    // Reset all bins
-    for (int i = 0; i < 720; i++) {
-        LaserValues[i] = -1.0;
-    }
+
 
     for (uint16_t i = 0; i < n; i++) {
-        float distance = dist[i];
-        float angleRad = ang[i];  // Already normalized to [-π, +π]
-        float angleDeg = angleRad * 180.0f / M_PI;
-
-        //Serial.print("Scan point "); Serial.print(i); Serial.print(": angleDeg="); Serial.print(angleDeg, 2); Serial.print(" dist="); Serial.println(distance, 3);
+    
+        scanPts[i].ang  = ang[i];
+        scanPts[i].dist = dist[i];
             
-        
-
-        int bin = (int)lroundf(-angleDeg * 2.0f);     
-        bin = bin % 720;     
-
-        LaserValues[bin] = distance;
-
-        //Serial.print("Mapped to bin "); Serial.print(bin); Serial.print(": angleDeg="); Serial.print(-bin * 0.5f, 2); Serial.print(" dist="); Serial.println(distance, 3);
     }
-
-    // Serial.println("---- LaserValues dump: idx, angleDeg, dist ----");
-    // for (int idx = 0; idx < 720; idx++) {
-    //     Serial.print("idx=");
-    //     Serial.print(idx);
-    //     Serial.print(" dist=");
-    //     Serial.println(LaserValues[idx], 3);          // -1.000 means empty
-    // }
-
+    scanN = n;
 }  
 
