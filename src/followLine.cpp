@@ -24,7 +24,7 @@ float DIST_NEARLINE = 0.05f;
 
 // Line following omega gains (NEW)
 // omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM
-float K_DIST = 4.0f;      // Gain for distance-to-line correction - cmd: "kdst"
+float K_DIST = 0.3f;      // Gain for distance-to-line correction - cmd: "kdst"
 float K_ANG  = 0.15f;     // Gain for angle error correction - cmd: "kang"
 
 // ----- Global variables -----
@@ -77,9 +77,8 @@ void MotorVel(float v_req, float w_req) {
    robot.setRobotVW(v_req, w_req);
 }
 
-// Modified Dist2Line: also computes the projection parameter 't' along the line segment
 void Dist2Line(double xi, double yi, double xf, double yf, double xr, double yr,
-               double &kl, double &pix, double &piy, double &t_param)
+               double &kl, double &pix, double &piy)
 {
     double dx = xf - xi;
     double dy = yf - yi;
@@ -89,7 +88,6 @@ void Dist2Line(double xi, double yi, double xf, double yf, double xr, double yr,
         kl = 0;
         pix = xi;
         piy = yi;
-        t_param = 0;
         return;
     }
     
@@ -100,8 +98,6 @@ void Dist2Line(double xi, double yi, double xf, double yf, double xr, double yr,
     
     pix = -kl*uy + xr;
     piy =  kl*ux + yr;
-    
-    t_param = ((pix - xi)*ux + (piy - yi)*uy) / lineLen;
 }
 
 void gotoXY(double xf, double yf, double tf)
@@ -203,59 +199,25 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
     double error_ang  = NormalizeAngle(tr - theta);
     double error_dist = std::sqrt((xf - x)*(xf - x) + (yf - y)*(yf - y));
 
-    double t_param;
-    Dist2Line(xi, yi, xf, yf, x, y, kl, nearX, nearY, t_param);
+    Dist2Line(xi, yi, xf, yf, x, y, kl, nearX, nearY);
 
     testSideLine = sign(kl);
     distLine     = std::abs(kl);
-    
-    bool behindStart = (t_param < 0.0);
-    bool pastEnd     = (t_param > 1.0);
-    
-    if (behindStart) {
-        nearX = xi;
-        nearY = yi;
-        distLine = std::sqrt((x - xi)*(x - xi) + (y - yi)*(y - yi));
-    }
 
-    // State transitions
+    // State transitions - MATCHING PASCAL LOGIC
     switch (followLineState) {
         case Follow_Line:
-            // if (behindStart || distLine > DIST_NEWLINE) {
-            //     followLineState = Goto_NearXY;
-            //     state = Rotation;
-            // } else if (pastEnd || error_dist < 10.0 * TOL_FINDIST) {
-            //     followLineState = Approaching;
-            // }
-            if ( error_dist < DIST_DA) 
-                 followLineState = Approaching;
+            if (error_dist < 10.0 * TOL_FINDIST) {
+                followLineState = Approaching;
+            } else if (distLine > DIST_NEWLINE) {
+                followLineState = Goto_NearXY;
+            }
             break;
 
         case Approaching:
             if (error_dist < TOL_FINDIST) {
                 followLineState = Final_Rot_FL;
-                state = Rotation;
             }
-            // Past end of segment - hand off to gotoXY to reach final point
-            else if (pastEnd && error_dist < DIST_DA) {
-                followLineState = Final_Rot_FL;
-                state = De_Accel;  // Start in De_Accel since we're close
-            }
-            // Past end and far from target - still hand off but start from Rotation
-            else if (pastEnd && error_dist >= DIST_DA) {
-                followLineState = Final_Rot_FL;
-                state = Rotation;
-            }
-            // ESCAPE 1: Saiu muito da linha
-            else if (distLine > DIST_NEWLINE) {
-                followLineState = Goto_NearXY;
-                state = Rotation;
-            }
-            // ESCAPE 2: Destino ficou muito longe (nova instrução)
-            else if (error_dist > 0.5f) {
-                followLineState = Follow_Line;
-            }
-
             break;
 
         case Final_Rot_FL:
@@ -271,15 +233,8 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
             break;
 
         case Goto_NearXY:
-            // Return to Follow_Line when close enough to the line
-            if (distLine < DIST_NEARLINE && !behindStart && !pastEnd) {
+            if (distLine < DIST_NEARLINE) {
                 followLineState = Follow_Line;
-            }
-            // gotoXY finished (reached near point) - return to Follow_Line
-            // even if not perfectly on the line
-            else if (state == StopState) {
-                followLineState = Follow_Line;
-                state = Rotation;
             }
             break;
     }

@@ -12,9 +12,6 @@ EKF::EKF() {
     dt = 0.04;
     
     // LaserValues.Fill(0.0);
-    for (int i = 0; i < 720; i++) {
-        LaserValues[i] = -1.0;
-    }
 
     I.Fill(0.0);
     I(0, 0) = 1.0;
@@ -27,12 +24,12 @@ EKF::EKF() {
     P(2, 2) = 0.01;  // Initial uncertainty in theta (rad²)
     
     Q.Fill(0.0);
-    Q(0, 0) = pow(0.01, 2);   // Process noise for v_lin (m/s)²
+    Q(0, 0) = pow(0.1, 2);   // Process noise for v_lin (m/s)²  pow(0.01, 2);
     Q(1, 1) = pow(0.02, 2);   // Process noise for omega (rad/s)²
 
     R.Fill(0.0);
-    R(0, 0) = pow(0.05, 2);   // Measurement noise for distance (m²)
-    R(1, 1) = pow(0.02, 2);   // Measurement noise for angle (rad²)
+    R(0, 0) = pow(0.05, 2);   // Initial/fallback — overwritten per-beacon by calRrr(r)
+    R(1, 1) = pow(0.02, 2);   // Initial/fallback — overwritten per-beacon by calRaa(r)
 
     BeaconPos[0].x = -0.8985;  BeaconPos[0].y = -0.6485;
     BeaconPos[1].x = -0.8985;  BeaconPos[1].y = 0.6485;
@@ -54,7 +51,7 @@ EKF::EKF() {
     // XR(0) = -0.785;
     // XR(1) = -0.57;
     // XR(2) = PI/2;   
-    XR(0) = -0.785;
+    XR(0) = -0.695;
     XR(1) = -0.355;
     XR(2) = PI/2;   
 
@@ -110,11 +107,51 @@ void EKF::covariancePropagation() {
 }
 
 // =============================================================================
-// UPDATE STEP
+// CALIBRATION MODELS (Gaussian-weighted fits from calibration data)
+// Offset, Rrr, Raa as functions of measured distance r
+// =============================================================================
+
+// Offset (bias): r_true = r_raw + offset(r)
+// Gauss cubic fit: offset(r) = a·r³ + b·r² + c·r + d
+static double calOffset(double r) {
+    return 0.00025449*r*r*r + 0.003916*r*r + (-0.000863)*r + 0.047234;
+}
+
+// Rrr: variance of distance measurement (m²)
+// Gauss cubic fit
+static double calRrr(double r) {
+    double v = 0.00000141*r*r*r + 0.000001*r*r + (-0.000002)*r + 0.000001;
+    return (v > 1e-8) ? v : 1e-8;  // floor to avoid zero variance
+}
+
+// Raa: variance of angle measurement (rad²)
+// Gauss cubic fit (coefficients in deg², converted to rad²)
+static double calRaa(double r) {
+    double deg2 = -0.01056515*r*r*r + 0.048585*r*r + (-0.067987)*r + 0.048199;
+    if (deg2 < 0.005) deg2 = 0.005;  // floor at 0.005 deg²
+    return deg2 * (M_PI / 180.0) * (M_PI / 180.0);  // convert to rad²
+}
+
+// =============================================================================
+// UPDATE STEP — with distance-dependent R from calibration
 // =============================================================================
 void EKF::updateEKF(int nBeacon) {
-    Z(0) = BeaconCluster[nBeacon].dist;
-    Z(1) = BeaconCluster[nBeacon].angle;
+    // Raw measurement from phaseAV (already includes BEACON_RADIUS_OFFSET)
+    double rawDist  = BeaconCluster[nBeacon].dist;
+    double rawAngle = BeaconCluster[nBeacon].angle;
+
+    // Apply calibration offset correction:
+    // phaseAV adds BEACON_RADIUS_OFFSET (fixed 0.04m), but calibration shows
+    // the true offset varies with distance. Correct by replacing fixed with model.
+    double dist_no_offset = rawDist - BEACON_RADIUS_OFFSET;  // undo fixed offset
+    double correctedDist = dist_no_offset + calOffset(dist_no_offset);  // apply calibrated offset
+
+    Z(0) = correctedDist;
+    Z(1) = rawAngle;
+
+    // Update R matrix based on measured distance
+    R(0, 0) = calRrr(dist_no_offset);
+    R(1, 1) = calRaa(dist_no_offset);
 
     double dx = BeaconPos[nBeacon].x - XR(0);
     double dy = BeaconPos[nBeacon].y - XR(1);
@@ -165,96 +202,6 @@ bool EKF::isInnovationValid(double distInnovation, double angleInnovation) {
     return true;
 }
 
-// =============================================================================
-// BEACON ASSOCIATION AND VALIDATION - FOR YDLIDAR X4
-// =============================================================================
-// Configuration constants - adjust these for your setup
-#define LIDAR_TO_ROBOT_OFFSET 0.005f   // Distance from LIDAR center to robot center (m)
-#define LIDAR_CCW false                  // true if angles increase counter-clockwise
-#define LIDAR_ANGLE_OFFSET 0            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
-#define ASSOCIATION_THRESHOLD 0.25     // Max distance to associate point with beacon (m)
-#define BEACON_RADIUS_OFFSET 0.042       // Offset for beacon center (m)
-
-// void EKF::phaseAV() {
-//     // Reset all beacon clusters
-//     for (int j = 0; j < NBEACONS; j++) {
-//         BeaconCluster[j].x = 0.0;
-//         BeaconCluster[j].y = 0.0;
-//         BeaconCluster[j].n = 0;
-//         BeaconCluster[j].dist = 0.0;
-//         BeaconCluster[j].angle = 0.0;
-//     }
-
-    
-//     for (int j = 0; j < NBEACONS; j++) {
-//         double dx = BeaconPos[j].x - XR(0) - LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
-//         double dy = BeaconPos[j].y - XR(1) - LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
-//         double expectedAngle = normalizeAngle(atan2(dy, dx) - XR(2));
-        
-//         int idx_beacon_half = (int)round(expectedAngle * 180.0 / M_PI * 2.0);
-        
-//         if (LIDAR_CCW) {
-//             idx_beacon = idx_beacon_half;
-//         } else {
-//             idx_beacon = -idx_beacon_half;
-//         }
-        
-//         BeaconCluster[j].firstRay = idx_beacon - deltaRay;
-//         if (BeaconCluster[j].firstRay < 0) {
-//             BeaconCluster[j].firstRay += 720;
-//         }
-
-//         for (int i = 0; i < 2 * deltaRay; i++) {
-//             idx = (BeaconCluster[j].firstRay + i) % 720;
-            
-//             // MeasureDist = LaserValues(0, idx); 
-//             MeasureDist = LaserValues[idx];
-            
-            
-//             if (MeasureDist < 0.03 || MeasureDist > 2.5) { 
-//                 continue;
-//             }
-            
-//             double rayAngleDeg = (double)idx * 0.5;
-//             double rayAngleRad;
-            
-//             if (LIDAR_CCW) {
-//                 rayAngleRad = (rayAngleDeg - LIDAR_ANGLE_OFFSET) * M_PI / 180.0;
-//             } else {
-//                 rayAngleRad = -(rayAngleDeg - LIDAR_ANGLE_OFFSET) * M_PI / 180.0;
-//             }
-            
-//             MeasurePos.x = MeasureDist * cos(rayAngleRad + XR(2)) + XR(0) + LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
-//             MeasurePos.y = MeasureDist * sin(rayAngleRad + XR(2)) + XR(1) + LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
-            
-//             double distToBeacon = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
-            
-//             if (distToBeacon < ASSOCIATION_THRESHOLD) {
-                
-//                 BeaconCluster[j].n++;
-//                 double n = BeaconCluster[j].n;
-//                 BeaconCluster[j].x = BeaconCluster[j].x * (n - 1) / n + MeasurePos.x / n;
-//                 BeaconCluster[j].y = BeaconCluster[j].y * (n - 1) / n + MeasurePos.y / n;
-
-//                 // Serial.print("Cluster_x: ");
-//                 // Serial.print(BeaconCluster[j].x );
-//                 // Serial.print(" Cluster_y: ");
-//                 // Serial.println(BeaconCluster[j].y);
-//             }
-//         }
-
-//         // Compute final distance and angle for detected beacons
-//         if (BeaconCluster[j].n >= 1) {
-//             double cluster_dx = BeaconCluster[j].x - XR(0);
-//             double cluster_dy = BeaconCluster[j].y - XR(1);
-            
-//             BeaconCluster[j].angle = normalizeAngle(atan2(cluster_dy, cluster_dx) - XR(2));
-//             BeaconCluster[j].dist = sqrt(cluster_dx * cluster_dx + cluster_dy * cluster_dy) + BEACON_RADIUS_OFFSET;
-//             BeaconCluster[j].x += BEACON_RADIUS_OFFSET * cos(atan2(cluster_dy, cluster_dx));
-//             BeaconCluster[j].y += BEACON_RADIUS_OFFSET * sin(atan2(cluster_dy, cluster_dx));
-//         }
-//     }
-// }
 
 void EKF::phaseAV() {
 
@@ -271,38 +218,36 @@ void EKF::phaseAV() {
   // For each beacon, try to associate scan points near its expected angle
   for (int j = 0; j < NBEACONS; j++) {
 
-    int passDist = 0;
-    int passAng  = 0;
-    int passAssoc = 0;
-    double bestAbsAngErr = 1e9;
-    double bestAssocDist = 1e9;
+    // int passDist = 0;
+    // int passAng  = 0;
+    // int passAssoc = 0;
+    // double bestAbsAngErr = 1e9;
+    // double bestAssocDist = 1e9;
 
     // Beacon expected angle in robot frame
     double dx = BeaconPos[j].x - XR(0) - LIDAR_TO_ROBOT_OFFSET * cos(XR(2));
     double dy = BeaconPos[j].y - XR(1) - LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
     double expectedAngle = normalizeAngle(atan2(dy, dx) - XR(2)); // [-pi, +pi]
 
-    // Window size: deltaRay bins * 0.5deg per bin -> radians
     double windowRad = (double)deltaRay * 0.5 * M_PI / 180.0;
 
 
-    // Scan all points you received this scan (no need for 720)
     for (uint16_t k = 0; k < scanN; k++) {
 
         double MeasureDist = (double)scanPts[k].dist;
 
-        const double LIDAR_YAW_OFFSET = -5; // <-- tune this (rad)
-        double rayAngleRad = (double)scanPts[k].ang + LIDAR_YAW_OFFSET * M_PI / 180.0; // Convert to radians and add offset
+        const double LIDAR_YAW_OFFSET = -5; 
+        double rayAngleRad = (double)scanPts[k].ang + LIDAR_YAW_OFFSET * M_PI / 180.0; 
         rayAngleRad = normalizeAngle(rayAngleRad); 
 
         if (MeasureDist < 0.03 || MeasureDist > 2.5) continue;
-        passDist++;
+        //passDist++;
 
         double angErr = fabs(normalizeAngle(rayAngleRad - expectedAngle));
-        if (angErr < bestAbsAngErr) bestAbsAngErr = angErr;
+        // if (angErr < bestAbsAngErr) bestAbsAngErr = angErr;
 
         if (angErr > windowRad) continue;
-        passAng++;
+        //passAng++;
 
 
         double dAng = normalizeAngle(rayAngleRad - expectedAngle);
@@ -313,10 +258,10 @@ void EKF::phaseAV() {
         MeasurePos.y = MeasureDist * sin(rayAngleRad + XR(2)) + XR(1) + LIDAR_TO_ROBOT_OFFSET * sin(XR(2));
 
         double distToBeacon = dist(BeaconPos[j].x - MeasurePos.x, BeaconPos[j].y - MeasurePos.y);
-        if (distToBeacon < bestAssocDist) bestAssocDist = distToBeacon;
+        // if (distToBeacon < bestAssocDist) bestAssocDist = distToBeacon;
 
         if (distToBeacon < ASSOCIATION_THRESHOLD) {
-            passAssoc++;
+            //passAssoc++;
 
             BeaconCluster[j].n++;
             double n = BeaconCluster[j].n;
@@ -364,13 +309,9 @@ void EKF::motionmodelEKF() {
 
 void EKF::setScan(const float* ang, const float* dist, uint16_t n) {
 
-
     for (uint16_t i = 0; i < n; i++) {
-    
         scanPts[i].ang  = ang[i];
-        scanPts[i].dist = dist[i];
-            
+        scanPts[i].dist = dist[i]; 
     }
     scanN = n;
-}  
-
+}

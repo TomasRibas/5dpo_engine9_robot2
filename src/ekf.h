@@ -43,6 +43,12 @@
 #define MAX_DIST_INNOVATION 0.3    // meters
 #define MAX_ANGLE_INNOVATION 0.5   // radians (~28 degrees)
 
+#define LIDAR_TO_ROBOT_OFFSET 0.005f   // Distance from LIDAR center to robot center (m)
+#define LIDAR_CCW false                  // true if angles increase counter-clockwise
+#define LIDAR_ANGLE_OFFSET 0            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
+#define ASSOCIATION_THRESHOLD 0.15     // Max distance to associate point with beacon (m)
+#define BEACON_RADIUS_OFFSET 0.04       // Offset for beacon center (m)
+
 // #define LIDAR_ANGLE_OFFSET (0)
 
 // Position structure
@@ -80,6 +86,8 @@ public:
     double vlin_prev, omega_prev;
     double t, dt, w, theta;
     double error_dist_prev;
+
+    
     struct ScanPoint {
         float ang;   // radians [-pi, pi]
         float dist;  // meters
@@ -171,17 +179,18 @@ public:
     float minDeg =  1e9f;
     float maxDeg = -1e9f;
 
+
+
 private:
-    // Helper: compute expected measurement for a beacon
+
     void computeExpectedMeasurement(int nBeacon, double& expectedDist, double& expectedAngle);
     
-    // Helper: update measurement Jacobian for a beacon
     void updateMeasurementJacobian(int nBeacon, double dBeacon);
     
-    // Helper: check if innovation is within acceptable bounds
     bool isInnovationValid(double distInnovation, double angleInnovation);
+
 };
 
 extern EKF ekf;
 
-#endif // EKF_H
+#endif
