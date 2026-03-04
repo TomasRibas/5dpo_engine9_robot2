@@ -489,6 +489,8 @@ void serial_ComRobot()
   //   serial_commands.flush();
   // }
 
+  serial_commands.send_command("ip", WiFi.localIP().toString().c_str());
+
   pars_list.send_sparse_commands(serial_commands);
 
   serial_commands.send_command("dbg", 5.0f); 
@@ -624,7 +626,7 @@ void setup() {
     robot.PID[i].init_pars(&wheel_PID_pars);
   }
 
-  strcpy(ssid, "5DPO-NETWORK");
+  strcpy(ssid, "FEUP-I-108");
   strcpy(password, "5dpo5dpo");
 
   load_commands(pars_fname, serial_commands);
@@ -643,6 +645,8 @@ void setup() {
     Serial.println();
     Serial.print("Connected! IP address: ");
     Serial.println(WiFi.localIP());
+    Serial.print("MAC address: ");
+    Serial.println(WiFi.macAddress()); // <-- add this line
   } else {
     Serial.println();
     Serial.println("Failed to connect to WiFi.");
@@ -659,7 +663,7 @@ void setup() {
   encoders[0].begin(encoder_pins[0]);
   encoders[1].begin(encoder_pins[1]);
   
-  stof.initializeToFSensor();
+  //stof.initializeToFSensor();
 
   SerialTiny.begin();
 
@@ -719,8 +723,8 @@ void loop() {
 
     //Serial.println("AAAAAAAAA");
     //process TOF sensor
-    stof.calculateTOF();
-    printf("TOF: %.2f cm\n", stof.distance_tof * 100.0f);
+    //stof.calculateTOF();
+    //printf("TOF: %.2f cm\n", stof.distance_tof * 100.0f);
 
 
     read_PIO_encoders();
@@ -733,7 +737,7 @@ void loop() {
     if (scanDone) {
       scanDone = false;
       ekf.phaseAV();
-      //serial_Beacons();
+      serial_Beacons();
       ekf.motionmodelEKF();
     }
 
@@ -770,8 +774,9 @@ void loop() {
       followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf);
     }
 
+
     robot.accelerationLimit(); 
     robot.calcMotorsVoltage(); 
-    //serial_ComRobot();
+    serial_ComRobot();
   }
 }
