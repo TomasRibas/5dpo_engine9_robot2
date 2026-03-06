@@ -282,6 +282,8 @@ void process_command(command_frame_t frame)
     if (!fl_pars.enabled) {
       robot.v_req = 0;
       robot.w_req = 0;
+    } else {
+      resetFollowLine();
     }
 
   } else if (frame.command_is("flrst")) { 
@@ -383,7 +385,7 @@ float voltageToPWM(float voltage, float maxVoltage, float maxPWM)
 void setMotorsPWM(float u1, float u2)
 {
   float maxVoltage = robot.battery_voltage;
-  float maxPWM = 250;
+  float maxPWM = 255;
   
   int PWM1 = voltageToPWM(u1, maxVoltage, maxPWM);
   int PWM2 = voltageToPWM(u2, maxVoltage, maxPWM);
@@ -465,6 +467,43 @@ void serial_ComRobot()
   serial_commands.send_command("fyf", (float)fl_pars.yf);
   serial_commands.send_command("ftf", (float)fl_pars.tf);
 
+  serial_commands.send_command("w1",     robot.w1e);
+  serial_commands.send_command("w2",     robot.w2e);
+  serial_commands.send_command("w1req", robot.w1ref);
+  serial_commands.send_command("w2req", robot.w2ref);
+  serial_commands.send_command("u1", robot.u1);
+  serial_commands.send_command("u2", robot.u2);
+  serial_commands.send_command("ve", robot.ve);
+  serial_commands.send_command("we", robot.we);
+  // FollowLine tuning constants
+  serial_commands.send_command("van",  VEL_ANG_NOM);
+  serial_commands.send_command("vln",  VEL_LIN_NOM);
+  serial_commands.send_command("wda",  W_DA);
+  serial_commands.send_command("lda",  LinDeAccel);
+  serial_commands.send_command("metf", MAX_ETF);
+  serial_commands.send_command("hetf", HIST_ETF);
+  serial_commands.send_command("gfwd", GAIN_FWD);
+  serial_commands.send_command("dda",  DIST_DA);
+  serial_commands.send_command("gda",  GAIN_DA);
+  serial_commands.send_command("tfd",  TOL_FINDIST);
+  serial_commands.send_command("dnp",  DIST_NEWPOSE);
+  serial_commands.send_command("tnp",  THETA_NEWPOSE);
+  serial_commands.send_command("tda",  THETA_DA);
+  serial_commands.send_command("tft",  TOL_FINTHETA);
+  serial_commands.send_command("dnl",  DIST_NEWLINE);
+  serial_commands.send_command("dnel", DIST_NEARLINE);
+  serial_commands.send_command("kdst", K_DIST);
+  serial_commands.send_command("kang", K_ANG);
+  serial_commands.send_command("kvramp", KV_RAMP);
+
+  serial_commands.send_command("kc",  wheel_PID_pars.Kc);
+  serial_commands.send_command("ki",  wheel_PID_pars.Ki);
+  serial_commands.send_command("kf",  wheel_PID_pars.Kf);
+  serial_commands.send_command("kd",  wheel_PID_pars.Kd);
+  serial_commands.send_command("dz", wheel_PID_pars.dead_zone);
+
+  
+
   // serial_commands.send_command("nscn", (float)lidar.getNumScans());
   // serial_commands.send_command("scnms", (float)scan_interval_ms);
   // serial_commands.send_command("lpts", (float)lidar.getLastScanPointCount());
@@ -488,8 +527,6 @@ void serial_ComRobot()
   //   serial_commands.send_command("LE", 1.0f);
   //   serial_commands.flush();
   // }
-
-  serial_commands.send_command("ip", WiFi.localIP().toString().c_str());
 
   pars_list.send_sparse_commands(serial_commands);
 
@@ -598,6 +635,7 @@ void setup() {
 
   pars_list.register_command("kdst", &K_DIST);
   pars_list.register_command("kang", &K_ANG);
+  pars_list.register_command("kvramp", &KV_RAMP);
 
   udp_commands.init(process_command, serial_write);
   serial_commands.init(process_command, serial_write);
@@ -722,13 +760,8 @@ void loop() {
     previousMicros = currentMicros;
 
     //Serial.println("AAAAAAAAA");
-    //process TOF sensor
-    //stof.calculateTOF();
-    //printf("TOF: %.2f cm\n", stof.distance_tof * 100.0f);
-
 
     read_PIO_encoders();
-
     robot.odometry(); 
     
     ekf.predict(robot.ve, robot.we, robot.dt);
@@ -770,13 +803,16 @@ void loop() {
       resetFollowLine();
     }
 
-    if (fl_pars.enabled) {
-      followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf);
+    if (trajectory.active) {
+        executeTrajectory();  // Executa trajetória automática
+    } else if (fl_pars.enabled) {
+        followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf);
     }
-
 
     robot.accelerationLimit(); 
     robot.calcMotorsVoltage(); 
+    setMotorsPWM(robot.u1, robot.u2);
+
     serial_ComRobot();
   }
 }

@@ -7,7 +7,7 @@ float VEL_LIN_NOM = 0.2f;
 float W_DA        = 0.5f;
 float LinDeAccel  = 0.1f;
 
-float MAX_ETF      = 10.0f * M_PI/180.0f;//0.1745
+float MAX_ETF      = 15.0f * M_PI/180.0f;//0.2618
 float HIST_ETF     =  5.0f * M_PI/180.0f;//0.0873
 float GAIN_FWD     = 0.1f;
 float DIST_DA      = 0.05f;
@@ -19,13 +19,15 @@ float THETA_NEWPOSE = 15.0f * M_PI/180.0f;//0.2618
 float THETA_DA      = 5.0f * M_PI/180.0f;//0.0873
 float TOL_FINTHETA  = 1.0f * M_PI/180.0f;//0.01745
 
-float DIST_NEWLINE  = 0.1f;
+float DIST_NEWLINE  = 0.3f;  // Increased for smoother merging
 float DIST_NEARLINE = 0.05f;
 
-// Line following omega gains (NEW)
-// omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM
-float K_DIST = 0.3f;      // Gain for distance-to-line correction - cmd: "kdst"
-float K_ANG  = 0.15f;     // Gain for angle error correction - cmd: "kang"
+// Line following omega gains
+float K_DIST = 0.3f;
+float K_ANG  = 0.15f;
+
+// Velocity ramp rate (m/s²) — 0 = disabled (instant step)
+float KV_RAMP = 0.5f;   // cmd: "kvramp"
 
 // ----- Global variables -----
 double x, y, theta;
@@ -36,9 +38,25 @@ GoToXYState state = Rotation;
 
 double distLine = 0.0;
 double testSideLine = 0.0;
+double vlin_ramp = 0.0;   // current ramped velocity
 double nearX = 0.0, nearY = 0.0;
 double error_dist_prev = 99999.0;
 double kl = 0.0;
+
+// Trajectory state
+TrajectoryState trajectory = {false, 0, 0, false, nullptr};
+
+// Figure-8 waypoints (static storage)
+static Waypoint figure8_waypoints[8] = {
+    {-0.695, -0.355,  0.000, -0.355,  1.57},  // Segment 1
+    { 0.000, -0.355,  0.000,  0.355,  0.00},  // Segment 2
+    { 0.000,  0.355,  0.695,  0.355, -1.57},  // Segment 3
+    { 0.695,  0.355,  0.695, -0.355,  3.14},  // Segment 4
+    { 0.695, -0.355,  0.000, -0.355,  1.57},  // Segment 5
+    { 0.000, -0.355,  0.000,  0.355,  3.14},  // Segment 6
+    { 0.000,  0.355, -0.695,  0.355, -1.57},  // Segment 7
+    {-0.695,  0.355, -0.695, -0.355,  1.57}   // Segment 8
+};
 
 double NormalizeAngle(double a) {
     while (a <= -M_PI) a += 2.0 * M_PI;
@@ -71,10 +89,29 @@ void resetFollowLine() {
     kl = 0.0;
     vlin = 0.0;
     omega = 0.0;
+    vlin_ramp = 0.0;
 }
 
 void MotorVel(float v_req, float w_req) {
-   robot.setRobotVW(v_req, w_req);
+    const double dt = 0.04;  // 40ms control period
+    if (KV_RAMP > 0.0f && v_req > 0.0f) {
+        // Ramp up OR ramp down between two non-zero speeds
+        double step = (double)KV_RAMP * dt;
+        if (vlin_ramp < (double)v_req) {
+            vlin_ramp += step;
+            if (vlin_ramp > (double)v_req)
+                vlin_ramp = (double)v_req;
+        } else if (vlin_ramp > (double)v_req) {
+            vlin_ramp -= step;
+            if (vlin_ramp < (double)v_req)
+                vlin_ramp = (double)v_req;
+        }
+    } else {
+        // v_req == 0 (stop): always instant — robot must stop immediately for rotations
+        // KV_RAMP == 0: instant in all cases
+        vlin_ramp = 0.0;
+    }
+    robot.setRobotVW((float)vlin_ramp, w_req);
 }
 
 void Dist2Line(double xi, double yi, double xf, double yf, double xr, double yr,
@@ -211,12 +248,18 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
                 followLineState = Approaching;
             } else if (distLine > DIST_NEWLINE) {
                 followLineState = Goto_NearXY;
+                state = Rotation;
             }
             break;
 
         case Approaching:
             if (error_dist < TOL_FINDIST) {
                 followLineState = Final_Rot_FL;
+                state = Rotation;  // Reset gotoXY state cleanly — prevents omega spike
+                                   // from stale Go_Forward/De_Accel being active on first gotoXY call
+                vlin  = 0.0;       // Kill linear velocity immediately
+                omega = 0.0;
+                MotorVel(0.0f, 0.0f);
             }
             break;
 
@@ -239,13 +282,30 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
             break;
     }
 
-    // Outputs - using configurable K_DIST and K_ANG gains
+    // Outputs - with pure rotation for large angles
     switch (followLineState) {
-        case Follow_Line:
-            vlin  = VEL_LIN_NOM;
-            omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
+        case Follow_Line: {
+            static bool in_pure_rotation = false;
+            
+            // Hysteresis for pure rotation
+            if (std::abs(error_ang) > MAX_ETF + HIST_ETF) {
+                in_pure_rotation = true;
+            } else if (std::abs(error_ang) < MAX_ETF) {
+                in_pure_rotation = false;
+            }
+            
+            if (in_pure_rotation) {
+                // Pure rotation - no forward motion
+                vlin = 0.0;
+                omega = sign(error_ang) * VEL_ANG_NOM;
+            } else {
+                // Normal line following
+                vlin  = VEL_LIN_NOM;
+                omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
+            }
             MotorVel((float)vlin, (float)omega);
             break;
+        }
 
         case Approaching:
             vlin  = LinDeAccel;
@@ -269,4 +329,88 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
     }
 
     error_dist_prev = error_dist;
+}
+
+// ============================================================================
+// TRAJECTORY FUNCTIONS
+// ============================================================================
+
+void startFigure8() {
+    trajectory.waypoints = figure8_waypoints;
+    trajectory.total_segments = 8;
+    trajectory.current_segment = 0;
+    trajectory.loop = true;  // Loop by default
+    trajectory.active = true;
+    
+    resetFollowLine();
+    
+    // Serial.println("Figure-8 trajectory started");
+}
+
+void startCustomTrajectory(Waypoint* waypoints, int count, bool loop) {
+    trajectory.waypoints = waypoints;
+    trajectory.total_segments = count;
+    trajectory.current_segment = 0;
+    trajectory.loop = loop;
+    trajectory.active = true;
+    
+    resetFollowLine();
+    
+    // Serial.print("Custom trajectory started: ");
+    // Serial.print(count);
+    // Serial.println(" segments");
+}
+
+void stopTrajectory() {
+    trajectory.active = false;
+    vlin = 0.0;
+    omega = 0.0;
+    MotorVel(0.0, 0.0);
+    
+    // Serial.println("Trajectory stopped");
+}
+
+bool isTrajectoryComplete() {
+    if (!trajectory.active) return true;
+    return (trajectory.current_segment >= trajectory.total_segments && !trajectory.loop);
+}
+
+void executeTrajectory() {
+    if (!trajectory.active) return;
+    if (trajectory.waypoints == nullptr) return;
+    
+    // Check if current segment is complete
+    if (followLineState == Stop_FL && state == StopState) {
+        // Segment complete - move to next
+        trajectory.current_segment++;
+        
+        // Serial.print("Segment ");
+        // Serial.print(trajectory.current_segment);
+        // Serial.print("/");
+        // Serial.print(trajectory.total_segments);
+        // Serial.println(" complete");
+        
+        // Check if trajectory finished
+        if (trajectory.current_segment >= trajectory.total_segments) {
+            if (trajectory.loop) {
+                // Loop back to start
+                trajectory.current_segment = 0;
+                // Serial.println("Looping trajectory...");
+            } else {
+                // Stop trajectory
+                stopTrajectory();
+                // Serial.println("Trajectory complete!");
+                return;
+            }
+        }
+        
+        resetFollowLine();
+        
+    }
+    
+    // Execute current segment
+    if (trajectory.current_segment < trajectory.total_segments) {
+        Waypoint &wp = trajectory.waypoints[trajectory.current_segment];
+        followLine(wp.xi, wp.yi, wp.xf, wp.yf, wp.tf);
+    }
 }

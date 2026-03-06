@@ -43,7 +43,7 @@
 #define MAX_DIST_INNOVATION 0.3    // meters
 #define MAX_ANGLE_INNOVATION 0.5   // radians (~28 degrees)
 
-#define LIDAR_TO_ROBOT_OFFSET 0.005f   // Distance from LIDAR center to robot center (m)
+#define LIDAR_TO_ROBOT_OFFSET 0.0275f   // Distance from LIDAR center to robot center (m)
 #define LIDAR_CCW false                  // true if angles increase counter-clockwise
 #define LIDAR_ANGLE_OFFSET 0            // Add offset if 0° is not forward (e.g., 180 if mounted backwards)
 #define ASSOCIATION_THRESHOLD 0.15     // Max distance to associate point with beacon (m)
