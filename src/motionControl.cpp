@@ -79,8 +79,7 @@ void resetFollowLine() {
 
 void MotorVel(float v_req, float w_req) {
     const double dt = 0.04;  // 40ms control period
-    if (KV_RAMP > 0.0f && v_req > 0.0f) {
-        // Ramp up OR ramp down between two non-zero speeds
+    if (KV_RAMP > 0.0f && v_req != 0.0f) {
         double step = (double)KV_RAMP * dt;
         if (vlin_ramp < (double)v_req) {
             vlin_ramp += step;
@@ -92,7 +91,7 @@ void MotorVel(float v_req, float w_req) {
                 vlin_ramp = (double)v_req;
         }
     } else {
-        // v_req == 0 (stop): always instant — robot must stop immediately for rotations
+        // v_req == 0 (stop): always instant
         // KV_RAMP == 0: instant in all cases
         vlin_ramp = 0.0;
     }
@@ -215,9 +214,12 @@ void gotoXY(double xf, double yf, double tf)
 }
 
 
-void followLine(double xi, double yi, double xf, double yf, double tf)
+void followLine(double xi, double yi, double xf, double yf, double tf, int dir)
 {
+    // Line direction angle — flipped by PI for reverse
     double tr = std::atan2(yf - yi, xf - xi);
+    if (dir < 0) tr = NormalizeAngle(tr + M_PI);  // reverse: face backwards
+
     double error_ang  = NormalizeAngle(tr - theta);
     double error_dist = std::sqrt((xf - x)*(xf - x) + (yf - y)*(yf - y));
 
@@ -284,8 +286,8 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
                 vlin = 0.0;
                 omega = sign(error_ang) * VEL_ANG_NOM;
             } else {
-                // Normal line following
-                vlin  = VEL_LIN_NOM;
+                // Normal line following — dir flips vlin sign
+                vlin  = dir * VEL_LIN_NOM;
                 omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
             }
             MotorVel((float)vlin, (float)omega);
@@ -293,7 +295,11 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
         }
 
         case Approaching:
-            vlin  = LinDeAccel;
+            vlin = dir * VEL_LIN_NOM * (error_dist / (10.0 * TOL_FINDIST));
+            if (dir > 0)
+                vlin = constrain(vlin, (double)LinDeAccel, (double)VEL_LIN_NOM);
+            else
+                vlin = constrain(vlin, -(double)VEL_LIN_NOM, -(double)LinDeAccel);
             omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
             MotorVel((float)vlin, (float)omega);
             break;
@@ -512,4 +518,3 @@ void followCircle(double xc, double yc, double R, double angf, double tf, int di
             break;
     }
 }
- 

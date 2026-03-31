@@ -66,7 +66,7 @@ extern double kl;
 // ----- Functions -----
 void setPose(double xe, double ye, double thetae);
 void gotoXY(double xf, double yf, double tf);
-void followLine(double xi, double yi, double xf, double yf, double tf);
+void followLine(double xi, double yi, double xf, double yf, double tf, int dir = 1);
 void resetFollowLine();  // Reset all internal state for a new segment
 
 

@@ -80,13 +80,14 @@ bool lidarStarted = false;
 // FollowLine Parameters Structure
 // =============================================================================
 struct FollowLinePars {
-    float xi;       // Start X
-    float yi;       // Start Y
-    float xf;       // End X
-    float yf;       // End Y
-    float tf;       // Final theta
-    bool enabled;   // Enable/disable followLine execution
-    bool reset_requested;  // Request to reset state machine
+    float xi;
+    float yi;
+    float xf;
+    float yf;
+    float tf;
+    int   dir;              // 1 = forward, -1 = reverse
+    bool enabled;
+    bool reset_requested;
 } fl_pars;
 
 void init_followline_pars() {
@@ -95,6 +96,7 @@ void init_followline_pars() {
     fl_pars.xf = -0.785f;
     fl_pars.yf = -0.57f;
     fl_pars.tf = PI / 2;
+    fl_pars.dir = 1;
     fl_pars.enabled = false;
     fl_pars.reset_requested = false;
 }
@@ -355,6 +357,8 @@ void process_command(command_frame_t frame)
 
   } else if (frame.command_is("ftf")) { 
     fl_pars.tf = frame.value;    
+  } else if (frame.command_is("fldr")) {
+    fl_pars.dir = (int)frame.value;  // 1=forward, -1=reverse
 
   } else if (frame.command_is("flen")) { 
     fl_pars.enabled = (frame.value != 0);
@@ -562,6 +566,7 @@ void serial_ComRobot()
   serial_commands.send_command("fxf", (float)fl_pars.xf);
   serial_commands.send_command("fyf", (float)fl_pars.yf);
   serial_commands.send_command("ftf", (float)fl_pars.tf);
+  serial_commands.send_command("fldr", (float)fl_pars.dir);
 
   serial_commands.send_command("w1",     robot.w1e);
   serial_commands.send_command("w2",     robot.w2e);
@@ -813,7 +818,7 @@ void setup() {
   WiFi.begin(ssid, password);
 
   unsigned long startAttemptTime = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 30000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 20000) {
     Serial.print(".");
     delay(500);
   }
@@ -827,8 +832,6 @@ void setup() {
   } else {
     Serial.println();
     Serial.println("Failed to connect to WiFi.");
-    Serial.print("MAC address: ");
-    Serial.println(WiFi.macAddress());
   }
 
   initYDLidar();
@@ -953,7 +956,7 @@ void loop() {
     }
 
     if (fl_pars.enabled) {
-      followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf);
+      followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf, fl_pars.dir);
     }  else if (fc_pars.enabled) {
       followCircle(fc_pars.xc, fc_pars.yc, fc_pars.R, fc_pars.angf, fc_pars.tf, fc_pars.dir);
     } else if (rev_active) {
