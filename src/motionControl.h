@@ -1,5 +1,5 @@
-#ifndef FOLLOWLINE_H
-#define FOLLOWLINE_H
+#ifndef MOTIONCONTROL_H
+#define MOTIONCONTROL_H
 
 #include <Arduino.h>
 #include <cmath>
@@ -56,28 +56,12 @@ enum GoToXYState {
     StopState = 5
 };
 
-// ----- Waypoint Structure -----
-struct Waypoint {
-    double xi, yi;   // Start point
-    double xf, yf;   // End point
-    double tf;       // Final theta
-};
-
-// ----- Trajectory State -----
-struct TrajectoryState {
-    bool active;           // Is trajectory running?
-    int current_segment;   // Current segment index (0-7 for figure-8)
-    int total_segments;    // Total number of segments
-    bool loop;             // Loop trajectory when finished?
-    Waypoint* waypoints;   // Pointer to waypoint array
-};
 
 // ----- Global State Variables (extern) -----
 extern FollowLineState followLineState;
 extern GoToXYState state;
 extern double distLine;
 extern double kl;
-extern TrajectoryState trajectory;
 
 // ----- Functions -----
 void setPose(double xe, double ye, double thetae);
@@ -85,14 +69,57 @@ void gotoXY(double xf, double yf, double tf);
 void followLine(double xi, double yi, double xf, double yf, double tf);
 void resetFollowLine();  // Reset all internal state for a new segment
 
-// Trajectory functions
-void startFigure8();              // Start figure-8 trajectory
-void startCustomTrajectory(Waypoint* waypoints, int count, bool loop);
-void stopTrajectory();            // Stop trajectory execution
-void executeTrajectory();         // Call this in main loop if trajectory.active
-bool isTrajectoryComplete();      // Check if trajectory finished
 
 double NormalizeAngle(double a);
 double Deg(double rad);
 
-#endif // FOLLOWLINE_H
+// ============================================================================
+// FollowCircle — Independent Tuning Constants
+// All separate from followLine, tunable via ComRobot
+// ============================================================================
+ 
+extern float FC_VEL_LIN_NOM;   // Nominal linear velocity (m/s)        - cmd: "fcvln"
+extern float FC_VEL_ANG_NOM;   // Nominal angular velocity (rad/s)      - cmd: "fcvan"
+extern float FC_LinDeAccel;    // Deceleration linear velocity (m/s)    - cmd: "fclda"
+extern float FC_W_DA;          // Deceleration angular velocity (rad/s) - cmd: "fcwda"
+ 
+extern float FC_TOL_FINDIST;   // Final distance tolerance (m)          - cmd: "fctfd"
+extern float FC_DIST_DA;       // Arc length to start deceleration (m)  - cmd: "fcdda"
+extern float FC_DIST_NEWPOSE;  // Distance to re-trigger from stop (m)  - cmd: "fcdnp"
+extern float FC_THETA_DA;      // Theta deceleration threshold (rad)    - cmd: "fctda"
+extern float FC_THETA_NEWPOSE; // Theta to re-trigger from stop (rad)   - cmd: "fctnp"
+extern float FC_TOL_FINTHETA;  // Final theta tolerance (rad)           - cmd: "fctft"
+ 
+extern float FC_K_ANG;         // Heading correction gain               - cmd: "fckang"
+extern float FC_K_RAD;         // Radial correction gain                - cmd: "fckrad"
+ 
+extern float FC_KV_RAMP;       // Velocity ramp rate m/s² (0=disabled)  - cmd: "fckvramp"
+ 
+// ============================================================================
+// State Enum
+// ============================================================================
+enum FollowCircleState {
+    FC_Follow_Arc  = 0,
+    FC_Approaching = 1,
+    FC_Final_Rot   = 2,
+    FC_Stop        = 3
+};
+ 
+// ============================================================================
+// Global State (extern)
+// ============================================================================
+extern FollowCircleState followCircleState;
+ 
+// ============================================================================
+// Functions
+// ============================================================================
+void Dist2Arc(double xc, double yc, double R,
+              double xr, double yr,
+              double &pix, double &piy, double &dist);
+ 
+void resetFollowCircle();
+ 
+void followCircle(double xc, double yc, double R,
+                  double angf, double tf, int dir);
+
+#endif // MOTIONCONTROL_H

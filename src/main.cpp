@@ -5,7 +5,10 @@
 #include "TOF.h"
 #include "robot.h"
 #include "trajectories.h"
-#include "followLine.h"
+#include "motionControl.h"
+#include "servo_control.h"
+
+bool solenoid_on = false;
 
 TOF stof;
 
@@ -96,11 +99,75 @@ void init_followline_pars() {
     fl_pars.reset_requested = false;
 }
 
+// --- 1. New parameter struct (alongside FollowLinePars) ---
+ 
+// --- 2. Parameter struct (alongside FollowLinePars) ---
+struct FollowCirclePars {
+    float xc;
+    float yc;
+    float R;
+    float angf;
+    float tf;
+    int   dir;      // +1 = CCW,  -1 = CW
+    bool  enabled;
+    bool  reset_requested;
+} fc_pars;
+ 
+void init_followcircle_pars() {
+    fc_pars.xc      =  0.0f;
+    fc_pars.yc      =  0.0f;   // default: robot at (0,0) is on top of circle
+    fc_pars.R       =  0.1f;
+    fc_pars.angf    =  1.57f;
+    fc_pars.tf      =  1.57f;
+    fc_pars.dir     =  1;
+    fc_pars.enabled =  false;
+    fc_pars.reset_requested = false;
+}
+
+bool rev_active = false;
+float rev_speed  = 0.0f;
+
+int analogWriteBits = 8; 
+int analogWriteMax = (1 << analogWriteBits) - 1; 
+
+const int solenoid_in1 = 14;
+const int solenoid_in2 = 15;
+
+void initializeSolenoid() {
+  pinMode(solenoid_in1, OUTPUT);
+  pinMode(solenoid_in2, OUTPUT);
+  analogWrite(solenoid_in1, analogWriteMax);  // both HIGH = off (inverted logic)
+  analogWrite(solenoid_in2, analogWriteMax);
+}
+
+void setSolenoidPWM(int pwm) {
+  int PWM_max = analogWriteMax;  // 1023
+  if (pwm == 0) {
+    digitalWrite(solenoid_in1, HIGH);  // clean HIGH, not PWM
+    digitalWrite(solenoid_in2, HIGH);
+  } else if (pwm > 0) {
+    analogWrite(solenoid_in1, PWM_max - pwm);
+    analogWrite(solenoid_in2, PWM_max);
+  } else {
+    analogWrite(solenoid_in1, PWM_max);
+    analogWrite(solenoid_in2, PWM_max + pwm);
+  }
+}
+
 void set_interval(float new_interval)
 {
   interval = new_interval * 1000000L;
   robot.dt = new_interval;
   wheel_PID_pars.dt = robot.dt;  
+}
+
+float voltageToPWM(float voltage, float maxVoltage, float maxPWM)
+{
+  if (maxVoltage < 1e-3f) return 0;
+
+  int pwm = (voltage / maxVoltage) * maxPWM;
+  pwm = constrain(pwm, -maxPWM, maxPWM);
+  return pwm;
 }
 
 void process_command(command_frame_t frame)
@@ -148,8 +215,20 @@ void process_command(command_frame_t frame)
     robot.w_req = frame.value;    
 
   } else if (frame.command_is("sl")) { 
-    robot.solenoid_PWM = frame.value;    
+    if (frame.value > 0) {
+      robot.solenoid_PWM = (int)voltageToPWM(5.0f, robot.battery_voltage, analogWriteMax);
+      solenoid_on = true;
+    } else {
+      robot.solenoid_PWM = -(int)voltageToPWM(5.0f, robot.battery_voltage, analogWriteMax);
+      setSolenoidPWM(robot.solenoid_PWM);
+      robot.solenoid_PWM = 0;
+      setSolenoidPWM(robot.solenoid_PWM);
 
+      solenoid_on = false;
+    }
+  } else if (frame.command_is("sv")) {
+    servoGoTo((int)frame.value);  // sv 90 → turns to 90° 
+  
   } else if (frame.command_is("xr")) { 
     robot.xe = frame.value;    
 
@@ -283,6 +362,8 @@ void process_command(command_frame_t frame)
       robot.v_req = 0;
       robot.w_req = 0;
     } else {
+      // Always reset state machine when re-enabling,
+      // so stale state from a previous run never carries over
       resetFollowLine();
     }
 
@@ -293,7 +374,32 @@ void process_command(command_frame_t frame)
 
       setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));
     }
-  } 
+  } else if (frame.command_is("fcxc")) { 
+      fc_pars.xc   = frame.value;
+  } else if (frame.command_is("fcyc")) { 
+      fc_pars.yc   = frame.value;
+  } else if (frame.command_is("fcR")) { 
+      fc_pars.R    = frame.value;
+  } else if (frame.command_is("fcaf")) { 
+      fc_pars.angf = frame.value;
+  } else if (frame.command_is("fctf")) { 
+      fc_pars.tf   = frame.value;
+  } else if (frame.command_is("fcdr")) { 
+      fc_pars.dir  = (int)frame.value; 
+  } else if (frame.command_is("fcen")) {
+      fc_pars.enabled = (frame.value != 0);
+      if (!fc_pars.enabled) { 
+        robot.v_req = 0; robot.w_req = 0; 
+      } else { 
+        resetFollowCircle(); 
+      }
+  } else if (frame.command_is("fcrst")) {
+      if (frame.value != 0) { fc_pars.reset_requested = true; fc_pars.enabled = true; }
+  } else if (frame.command_is("revspd")) {
+    rev_speed = frame.value;
+    rev_active = (frame.value != 0.0f);
+    robot.setRobotVW(rev_speed, 0.0f);
+  }
 }
 
 void send_file(const char* filename, int log_high)
@@ -321,12 +427,10 @@ void send_file(const char* filename, int log_high)
   f.close();
 }
 
-int analogWriteBits = 10; 
-int analogWriteMax = (1 << analogWriteBits) - 1; 
-
 #ifdef NOPIN
 #undef NOPIN
 #endif
+
 
 SerialPIO SerialTiny((pin_size_t)-1, 21);
 
@@ -373,14 +477,6 @@ void initializeMotors()
   pinMode(motor_right_in2, OUTPUT);
 }
 
-float voltageToPWM(float voltage, float maxVoltage, float maxPWM)
-{
-  if (maxVoltage < 1e-3f) return 0;
-
-  int pwm = (voltage / maxVoltage) * maxPWM;
-  pwm = constrain(pwm, -maxPWM, maxPWM);
-  return pwm;
-}
 
 void setMotorsPWM(float u1, float u2)
 {
@@ -447,7 +543,7 @@ void serial_Beacons(){
 
 void serial_ComRobot()
 {
-  // serial_commands.send_command("Vbat", robot.battery_voltage);
+  serial_commands.send_command("Vbat", robot.battery_voltage);
 
   serial_commands.send_command("Xst", ekf.XR(0));
   serial_commands.send_command("Yst", ekf.XR(1));
@@ -502,8 +598,32 @@ void serial_ComRobot()
   serial_commands.send_command("kd",  wheel_PID_pars.Kd);
   serial_commands.send_command("dz", wheel_PID_pars.dead_zone);
 
-  
+ 
+  // FollowCircle state & params
+  serial_commands.send_command("fcs",      (float)followCircleState);
+  serial_commands.send_command("fcen",     (float)(fc_pars.enabled ? 1 : 0));
+  serial_commands.send_command("fcxc",     fc_pars.xc);
+  serial_commands.send_command("fcyc",     fc_pars.yc);
+  serial_commands.send_command("fcR",      fc_pars.R);
+  serial_commands.send_command("fcaf",     fc_pars.angf);
+  serial_commands.send_command("fctf",     fc_pars.tf);
+  serial_commands.send_command("fcdr",     (float)fc_pars.dir);
+  // FollowCircle tuning
+  serial_commands.send_command("fcvln",    FC_VEL_LIN_NOM);
+  serial_commands.send_command("fcvan",    FC_VEL_ANG_NOM);
+  serial_commands.send_command("fclda",    FC_LinDeAccel);
+  serial_commands.send_command("fcwda",    FC_W_DA);
+  serial_commands.send_command("fctfd",    FC_TOL_FINDIST);
+  serial_commands.send_command("fcdda",    FC_DIST_DA);
+  serial_commands.send_command("fckang",   FC_K_ANG);
+  serial_commands.send_command("fckrad",   FC_K_RAD);
+  serial_commands.send_command("fckvramp", FC_KV_RAMP);
 
+  serial_commands.send_command("revspd", rev_speed);
+
+  serial_commands.send_command("tof", stof.distance_tof);
+
+  serial_commands.send_command("sl", solenoid_on ? 1.0f : 0.0f);
   // serial_commands.send_command("nscn", (float)lidar.getNumScans());
   // serial_commands.send_command("scnms", (float)scan_interval_ms);
   // serial_commands.send_command("lpts", (float)lidar.getLastScanPointCount());
@@ -530,7 +650,7 @@ void serial_ComRobot()
 
   pars_list.send_sparse_commands(serial_commands);
 
-  serial_commands.send_command("dbg", 5.0f); 
+  serial_commands.send_command("dbg", (float)robot.solenoid_PWM); 
   serial_commands.send_command("loop", (float)(micros() - interval));  
     
   serial_commands.flush();   
@@ -580,7 +700,15 @@ void setup() {
 
   pinMode(led, OUTPUT);
 
+  initializeSolenoid();
+
+  initServo();
+  
   set_interval(0.04);  // 40ms = 25Hz
+  
+  //analogWriteFreq(25000);
+  
+  //analogWriteResolution(10);
 
   analogReadResolution(10);
 
@@ -637,6 +765,20 @@ void setup() {
   pars_list.register_command("kang", &K_ANG);
   pars_list.register_command("kvramp", &KV_RAMP);
 
+  pars_list.register_command("fcvln",    &FC_VEL_LIN_NOM);
+  pars_list.register_command("fcvan",    &FC_VEL_ANG_NOM);
+  pars_list.register_command("fclda",    &FC_LinDeAccel);
+  pars_list.register_command("fcwda",    &FC_W_DA);
+  pars_list.register_command("fctfd",    &FC_TOL_FINDIST);
+  pars_list.register_command("fcdda",    &FC_DIST_DA);
+  pars_list.register_command("fcdnp",    &FC_DIST_NEWPOSE);
+  pars_list.register_command("fctda",    &FC_THETA_DA);
+  pars_list.register_command("fctnp",    &FC_THETA_NEWPOSE);
+  pars_list.register_command("fctft",    &FC_TOL_FINTHETA);
+  pars_list.register_command("fckang",   &FC_K_ANG);
+  pars_list.register_command("fckrad",   &FC_K_RAD);
+  pars_list.register_command("fckvramp", &FC_KV_RAMP);
+
   udp_commands.init(process_command, serial_write);
   serial_commands.init(process_command, serial_write);
 
@@ -644,21 +786,18 @@ void setup() {
 
   Serial.begin(115200);
 
-  initYDLidar();
-
-
   LittleFS.begin();
   
   float control_interval = 0.04;
 
   // PID defaults
-  wheel_PID_pars.Kf = 0.35;
-  wheel_PID_pars.Kc = 0.7;
-  wheel_PID_pars.Ki = 2.25;
+  wheel_PID_pars.Kf = 0;
+  wheel_PID_pars.Kc = 0.65;
+  wheel_PID_pars.Ki = 2.6;
   wheel_PID_pars.Kd = 0;
   wheel_PID_pars.Kfd = 0;
   wheel_PID_pars.dt = control_interval;
-  wheel_PID_pars.dead_zone = 0;
+  wheel_PID_pars.dead_zone = 1.5;
   
   for (int i = 0; i < NUM_WHEELS; i++) {
     robot.PID[i].init_pars(&wheel_PID_pars);
@@ -674,7 +813,7 @@ void setup() {
   WiFi.begin(ssid, password);
 
   unsigned long startAttemptTime = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 20000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - startAttemptTime < 30000) {
     Serial.print(".");
     delay(500);
   }
@@ -684,24 +823,27 @@ void setup() {
     Serial.print("Connected! IP address: ");
     Serial.println(WiFi.localIP());
     Serial.print("MAC address: ");
-    Serial.println(WiFi.macAddress()); // <-- add this line
+    Serial.println(WiFi.macAddress());
   } else {
     Serial.println();
     Serial.println("Failed to connect to WiFi.");
+    Serial.print("MAC address: ");
+    Serial.println(WiFi.macAddress());
   }
 
-  initializeMotors();
+  initYDLidar();
 
+  initializeMotors();
 
   Wire.setSDA(4);
   Wire.setSCL(5);
   Wire.begin();
-
+ 
   initializeEncoders();
   encoders[0].begin(encoder_pins[0]);
   encoders[1].begin(encoder_pins[1]);
   
-  //stof.initializeToFSensor();
+  stof.initializeToFSensor();
 
   SerialTiny.begin();
 
@@ -760,6 +902,8 @@ void loop() {
     previousMicros = currentMicros;
 
     //Serial.println("AAAAAAAAA");
+    stof.calculateTOF();
+    //Serial.print("Tof Value: ");Serial.println(stof.distance_tof);
 
     read_PIO_encoders();
     robot.odometry(); 
@@ -803,15 +947,23 @@ void loop() {
       resetFollowLine();
     }
 
-    if (trajectory.active) {
-        executeTrajectory();  // Executa trajetória automática
-    } else if (fl_pars.enabled) {
-        followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf);
+    if (fc_pars.reset_requested) {
+        fc_pars.reset_requested = false;
+        resetFollowCircle();
+    }
+
+    if (fl_pars.enabled) {
+      followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf);
+    }  else if (fc_pars.enabled) {
+      followCircle(fc_pars.xc, fc_pars.yc, fc_pars.R, fc_pars.angf, fc_pars.tf, fc_pars.dir);
+    } else if (rev_active) {
+      robot.setRobotVW(rev_speed, 0.0f);
     }
 
     robot.accelerationLimit(); 
     robot.calcMotorsVoltage(); 
     setMotorsPWM(robot.u1, robot.u2);
+    setSolenoidPWM(robot.solenoid_PWM);
 
     serial_ComRobot();
   }

@@ -1,20 +1,20 @@
-#include "followLine.h"
+#include "motionControl.h"
 
 // ----- Configurable Constants (can be set via gchannels) -----
 // Using float instead of double for gchannels compatibility
 float VEL_ANG_NOM = 1.0f;
-float VEL_LIN_NOM = 0.2f;
+float VEL_LIN_NOM = 0.3f;
 float W_DA        = 0.5f;
 float LinDeAccel  = 0.1f;
 
-float MAX_ETF      = 15.0f * M_PI/180.0f;//0.2618
+float MAX_ETF      = 10.0f * M_PI/180.0f;//0.1745
 float HIST_ETF     =  5.0f * M_PI/180.0f;//0.0873
 float GAIN_FWD     = 0.1f;
-float DIST_DA      = 0.05f;
+float DIST_DA      = 0.1f;
 float GAIN_DA      = 0.1f;
 
-float TOL_FINDIST  = 0.01f;
-float DIST_NEWPOSE = 0.5f;
+float TOL_FINDIST  = 0.02f;
+float DIST_NEWPOSE = 0.3f;
 float THETA_NEWPOSE = 15.0f * M_PI/180.0f;//0.2618
 float THETA_DA      = 5.0f * M_PI/180.0f;//0.0873
 float TOL_FINTHETA  = 1.0f * M_PI/180.0f;//0.01745
@@ -23,11 +23,11 @@ float DIST_NEWLINE  = 0.3f;  // Increased for smoother merging
 float DIST_NEARLINE = 0.05f;
 
 // Line following omega gains
-float K_DIST = 0.3f;
-float K_ANG  = 0.15f;
+float K_DIST = 9.0f;
+float K_ANG  = 4.0f;
 
 // Velocity ramp rate (m/s²) — 0 = disabled (instant step)
-float KV_RAMP = 0.5f;   // cmd: "kvramp"
+float KV_RAMP = 0.4f;   // cmd: "kvramp"
 
 // ----- Global variables -----
 double x, y, theta;
@@ -42,21 +42,6 @@ double vlin_ramp = 0.0;   // current ramped velocity
 double nearX = 0.0, nearY = 0.0;
 double error_dist_prev = 99999.0;
 double kl = 0.0;
-
-// Trajectory state
-TrajectoryState trajectory = {false, 0, 0, false, nullptr};
-
-// Figure-8 waypoints (static storage)
-static Waypoint figure8_waypoints[8] = {
-    {-0.695, -0.355,  0.000, -0.355,  1.57},  // Segment 1
-    { 0.000, -0.355,  0.000,  0.355,  0.00},  // Segment 2
-    { 0.000,  0.355,  0.695,  0.355, -1.57},  // Segment 3
-    { 0.695,  0.355,  0.695, -0.355,  3.14},  // Segment 4
-    { 0.695, -0.355,  0.000, -0.355,  1.57},  // Segment 5
-    { 0.000, -0.355,  0.000,  0.355,  3.14},  // Segment 6
-    { 0.000,  0.355, -0.695,  0.355, -1.57},  // Segment 7
-    {-0.695,  0.355, -0.695, -0.355,  1.57}   // Segment 8
-};
 
 double NormalizeAngle(double a) {
     while (a <= -M_PI) a += 2.0 * M_PI;
@@ -244,7 +229,7 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
     // State transitions - MATCHING PASCAL LOGIC
     switch (followLineState) {
         case Follow_Line:
-            if (error_dist < 10.0 * TOL_FINDIST) {
+            if ((error_dist < 10.0 * TOL_FINDIST) && (std::abs(error_ang) < MAX_ETF)) {
                 followLineState = Approaching;
             } else if (distLine > DIST_NEWLINE) {
                 followLineState = Goto_NearXY;
@@ -332,85 +317,199 @@ void followLine(double xi, double yi, double xf, double yf, double tf)
 }
 
 // ============================================================================
-// TRAJECTORY FUNCTIONS
+// followCircle - new globals (add near the other globals at the top)
 // ============================================================================
 
-void startFigure8() {
-    trajectory.waypoints = figure8_waypoints;
-    trajectory.total_segments = 8;
-    trajectory.current_segment = 0;
-    trajectory.loop = true;  // Loop by default
-    trajectory.active = true;
-    
-    resetFollowLine();
-    
-    // Serial.println("Figure-8 trajectory started");
-}
-
-void startCustomTrajectory(Waypoint* waypoints, int count, bool loop) {
-    trajectory.waypoints = waypoints;
-    trajectory.total_segments = count;
-    trajectory.current_segment = 0;
-    trajectory.loop = loop;
-    trajectory.active = true;
-    
-    resetFollowLine();
-    
-    // Serial.print("Custom trajectory started: ");
-    // Serial.print(count);
-    // Serial.println(" segments");
-}
-
-void stopTrajectory() {
-    trajectory.active = false;
-    vlin = 0.0;
-    omega = 0.0;
-    MotorVel(0.0, 0.0);
-    
-    // Serial.println("Trajectory stopped");
-}
-
-bool isTrajectoryComplete() {
-    if (!trajectory.active) return true;
-    return (trajectory.current_segment >= trajectory.total_segments && !trajectory.loop);
-}
-
-void executeTrajectory() {
-    if (!trajectory.active) return;
-    if (trajectory.waypoints == nullptr) return;
-    
-    // Check if current segment is complete
-    if (followLineState == Stop_FL && state == StopState) {
-        // Segment complete - move to next
-        trajectory.current_segment++;
-        
-        // Serial.print("Segment ");
-        // Serial.print(trajectory.current_segment);
-        // Serial.print("/");
-        // Serial.print(trajectory.total_segments);
-        // Serial.println(" complete");
-        
-        // Check if trajectory finished
-        if (trajectory.current_segment >= trajectory.total_segments) {
-            if (trajectory.loop) {
-                // Loop back to start
-                trajectory.current_segment = 0;
-                // Serial.println("Looping trajectory...");
-            } else {
-                // Stop trajectory
-                stopTrajectory();
-                // Serial.println("Trajectory complete!");
-                return;
-            }
+/// ============================================================================
+// Independent Tuning Constants — all separate from followLine
+// ============================================================================
+float FC_VEL_LIN_NOM  = 0.1f;                     // cmd: "fcvln"
+float FC_VEL_ANG_NOM  = 3.0f;                      // cmd: "fcvan"
+float FC_LinDeAccel   = 0.1f;                     // cmd: "fclda"
+float FC_W_DA         = 0.3f;                      // cmd: "fcwda"
+ 
+float FC_TOL_FINDIST  = 0.02f;                     // cmd: "fctfd"
+float FC_DIST_DA      = 0.05f;                     // cmd: "fcdda"
+float FC_DIST_NEWPOSE = 0.5f;                      // cmd: "fcdnp"
+float FC_THETA_DA     = 5.0f  * M_PI / 180.0f;    // cmd: "fctda"
+float FC_THETA_NEWPOSE= 15.0f * M_PI / 180.0f;    // cmd: "fctnp"
+float FC_TOL_FINTHETA = 1.0f  * M_PI / 180.0f;    // cmd: "fctft"
+ 
+float FC_K_ANG        = 2.0f;                    // cmd: "fckang"
+float FC_K_RAD        = -60.0f;                     // cmd: "fckrad"
+ 
+float FC_KV_RAMP      = 0.4f;                     // cmd: "fckvramp"  (disabled by default for arcs)
+ 
+// ============================================================================
+// Global State
+// ============================================================================
+FollowCircleState followCircleState = FC_Follow_Arc;
+ 
+static double fc_nearX     = 0.0;
+static double fc_nearY     = 0.0;
+static double fc_distToArc = 0.0;   // signed: >0 outside circle, <0 inside
+static double fc_vlin_ramp = 0.0;   // independent ramp — does not touch followLine's vlin_ramp
+ 
+// ============================================================================
+// FC_MotorVel — independent ramp using FC constants, does not touch followLine
+// ============================================================================
+static void FC_MotorVel(float v_req, float w_req)
+{
+    const double dt = 0.04;
+    if (FC_KV_RAMP > 0.0f && v_req > 0.0f) {
+        double step = (double)FC_KV_RAMP * dt;
+        if (fc_vlin_ramp < (double)v_req) {
+            fc_vlin_ramp += step;
+            if (fc_vlin_ramp > (double)v_req) fc_vlin_ramp = (double)v_req;
+        } else if (fc_vlin_ramp > (double)v_req) {
+            fc_vlin_ramp -= step;
+            if (fc_vlin_ramp < (double)v_req) fc_vlin_ramp = (double)v_req;
         }
-        
-        resetFollowLine();
-        
+    } else {
+        fc_vlin_ramp = (v_req == 0.0f) ? 0.0 : (double)v_req;
     }
-    
-    // Execute current segment
-    if (trajectory.current_segment < trajectory.total_segments) {
-        Waypoint &wp = trajectory.waypoints[trajectory.current_segment];
-        followLine(wp.xi, wp.yi, wp.xf, wp.yf, wp.tf);
+    robot.setRobotVW((float)fc_vlin_ramp, w_req);
+}
+ 
+// ============================================================================
+// Dist2Arc
+//   pix, piy : nearest point ON the circle
+//   dist     : signed radial error (robot_dist_to_center - R)
+//              >0 → robot is outside circle
+//              <0 → robot is inside  circle
+// ============================================================================
+void Dist2Arc(double xc, double yc, double R,
+              double xr, double yr,
+              double &pix, double &piy, double &dist)
+{
+    double dx = xr - xc;
+    double dy = yr - yc;
+    double d  = std::sqrt(dx*dx + dy*dy);
+ 
+    if (d < 1e-6) {
+        pix  = xc + R;
+        piy  = yc;
+        dist = -R;
+        return;
+    }
+ 
+    double ux = dx / d;
+    double uy = dy / d;
+ 
+    pix  = xc + R * ux;
+    piy  = yc + R * uy;
+    dist = d - R;
+}
+ 
+// ============================================================================
+// resetFollowCircle
+// ============================================================================
+void resetFollowCircle()
+{
+    followCircleState = FC_Follow_Arc;
+    state             = Rotation;   // primes gotoXY cleanly for FC_Final_Rot
+    fc_nearX          = 0.0;
+    fc_nearY          = 0.0;
+    fc_distToArc      = 0.0;
+    fc_vlin_ramp      = 0.0;
+    vlin              = 0.0;
+    omega             = 0.0;
+}
+ 
+// ============================================================================
+// followCircle
+//
+//   xc, yc : circle centre (m)
+//   R      : radius (m, must be > 0)
+//   angf   : final angle on circle (rad, global frame)
+//            robot stops at (xc + R*cos(angf), yc + R*sin(angf))
+//   tf     : desired final robot heading (rad)
+//   dir    : +1 = CCW,  -1 = CW
+// ============================================================================
+void followCircle(double xc, double yc, double R, double angf, double tf, int dir)
+{
+    // ------------------------------------------------------------------
+    // Geometry
+    // ------------------------------------------------------------------
+    Dist2Arc(xc, yc, R, x, y, fc_nearX, fc_nearY, fc_distToArc);
+ 
+    // Current angle of robot projected onto circle
+    double alfa = std::atan2(y - yc, x - xc);
+ 
+    // Final point on circle (used by gotoXY in FC_Final_Rot)
+    double xf = xc + R * std::cos(angf);
+    double yf = yc + R * std::sin(angf);
+ 
+    // Remaining arc length in travel direction
+    double arc_diff = NormalizeAngle(angf - alfa);
+    if (dir > 0 && arc_diff < 0) arc_diff += 2.0 * M_PI;
+    if (dir < 0 && arc_diff > 0) arc_diff -= 2.0 * M_PI;
+    double error_dist = std::abs(arc_diff) * R;
+ 
+    // Tangent direction: CCW → alfa + pi/2,  CW → alfa - pi/2
+    double tangentAngle = alfa + dir * M_PI / 2.0;
+    double error_ang    = NormalizeAngle(tangentAngle - theta);
+ 
+    // ------------------------------------------------------------------
+    // State transitions
+    // ------------------------------------------------------------------
+    switch (followCircleState) {
+ 
+        case FC_Follow_Arc:
+            if (error_dist < 10.0 * FC_TOL_FINDIST)
+                followCircleState = FC_Approaching;
+            break;
+ 
+        case FC_Approaching:
+            if (error_dist < FC_TOL_FINDIST) {
+                followCircleState = FC_Final_Rot;
+                state         = Rotation;
+                vlin          = 0.0;
+                omega         = 0.0;
+                fc_vlin_ramp  = 0.0;
+                FC_MotorVel(0.0f, 0.0f);
+            }
+            break;
+ 
+        case FC_Final_Rot:
+            if (state == StopState)
+                followCircleState = FC_Stop;
+            break;
+ 
+        case FC_Stop:
+            break;
+    }
+ 
+    // ------------------------------------------------------------------
+    // Outputs
+    // ------------------------------------------------------------------
+    switch (followCircleState) {
+ 
+        case FC_Follow_Arc:
+            vlin  = FC_VEL_LIN_NOM;
+            omega = FC_K_ANG * error_ang * FC_VEL_ANG_NOM
+                  - FC_K_RAD * fc_distToArc * dir;
+            FC_MotorVel((float)vlin, (float)omega);
+            break;
+ 
+        case FC_Approaching:
+            vlin  = FC_LinDeAccel;
+            omega = FC_K_ANG * error_ang * FC_VEL_ANG_NOM
+                  - FC_K_RAD * fc_distToArc * dir;
+            FC_MotorVel((float)vlin, (float)omega);
+            break;
+ 
+        case FC_Final_Rot:
+            // gotoXY still uses followLine constants (MAX_ETF, TOL_FINTHETA, etc.)
+            // which is fine — it's just a short positional snap at the end
+            gotoXY(xf, yf, tf);
+            break;
+ 
+        case FC_Stop:
+            vlin  = 0.0;
+            omega = 0.0;
+            FC_MotorVel(0.0f, 0.0f);
+            break;
     }
 }
+ 
