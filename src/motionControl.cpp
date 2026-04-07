@@ -194,16 +194,27 @@ void gotoXY(double xf, double yf, double tf)
             omega = GAIN_DA * error_ang;
             break;
 
+        // case Final_Rot:
+        //     vlin  = 0.0;
+        //     omega = rotateToFinal * VEL_ANG_NOM;
+        //     break;
+
+        // case DeAccel_Final_Rot:
+        //     vlin  = 0.0;
+        //     omega = sign(error_final_rot) * W_DA;
+        //     break;
         case Final_Rot:
             vlin  = 0.0;
-            omega = rotateToFinal * VEL_ANG_NOM;
+            omega = error_final_rot * VEL_ANG_NOM / MAX_ETF;
+            omega = constrain(omega, -(double)VEL_ANG_NOM, (double)VEL_ANG_NOM);
             break;
 
         case DeAccel_Final_Rot:
             vlin  = 0.0;
-            omega = sign(error_final_rot) * W_DA;
+            omega = error_final_rot * VEL_ANG_NOM / MAX_ETF;
+            omega = constrain(omega, -(double)W_DA, (double)W_DA);
             break;
-
+            
         case StopState:
             vlin  = 0.0;
             omega = 0.0;
