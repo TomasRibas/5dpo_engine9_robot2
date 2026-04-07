@@ -373,9 +373,9 @@ void process_command(command_frame_t frame)
 
   } else if (frame.command_is("flrst")) { 
     if (frame.value != 0) {
-      fl_pars.reset_requested = true;
+      //fl_pars.reset_requested = true;
       fl_pars.enabled = true;
-
+      resetFollowLine();
       setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));
     }
   } else if (frame.command_is("fcxc")) { 
@@ -596,6 +596,7 @@ void serial_ComRobot()
   serial_commands.send_command("kdst", K_DIST);
   serial_commands.send_command("kang", K_ANG);
   serial_commands.send_command("kvramp", KV_RAMP);
+  serial_commands.send_command("kdsti", K_DIST_I);
 
   serial_commands.send_command("kc",  wheel_PID_pars.Kc);
   serial_commands.send_command("ki",  wheel_PID_pars.Ki);
@@ -769,6 +770,7 @@ void setup() {
   pars_list.register_command("kdst", &K_DIST);
   pars_list.register_command("kang", &K_ANG);
   pars_list.register_command("kvramp", &KV_RAMP);
+  pars_list.register_command("kdsti", &K_DIST_I);
 
   pars_list.register_command("fcvln",    &FC_VEL_LIN_NOM);
   pars_list.register_command("fcvan",    &FC_VEL_ANG_NOM);
@@ -945,10 +947,10 @@ void loop() {
         }
     }
         
-    if (fl_pars.reset_requested) {
-      fl_pars.reset_requested = false;
-      resetFollowLine();
-    }
+    // if (fl_pars.reset_requested) {
+    //   fl_pars.reset_requested = false;
+    //   resetFollowLine();
+    // }
 
     if (fc_pars.reset_requested) {
         fc_pars.reset_requested = false;

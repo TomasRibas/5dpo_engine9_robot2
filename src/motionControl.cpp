@@ -25,6 +25,7 @@ float DIST_NEARLINE = 0.05f;
 // Line following omega gains
 float K_DIST = 9.0f;
 float K_ANG  = 4.0f;
+float K_DIST_I = 0.0f;  // start at 0, tune via command
 
 // Velocity ramp rate (m/s²) — 0 = disabled (instant step)
 float KV_RAMP = 0.4f;   // cmd: "kvramp"
@@ -42,6 +43,8 @@ double vlin_ramp = 0.0;   // current ramped velocity
 double nearX = 0.0, nearY = 0.0;
 double error_dist_prev = 99999.0;
 double kl = 0.0;
+
+double distLine_integral = 0.0;
 
 double NormalizeAngle(double a) {
     while (a <= -M_PI) a += 2.0 * M_PI;
@@ -299,7 +302,10 @@ void followLine(double xi, double yi, double xf, double yf, double tf, int dir)
             } else {
                 // Normal line following — dir flips vlin sign
                 vlin  = dir * VEL_LIN_NOM;
-                omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
+                // omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
+                distLine_integral += testSideLine * distLine * 0.04;  // integrate with dt=40ms
+                distLine_integral = constrain(distLine_integral, -0.5, 0.5);  // anti-windup
+                omega = K_DIST * testSideLine * distLine + K_DIST_I * distLine_integral + K_ANG * error_ang * VEL_ANG_NOM;
             }
             MotorVel((float)vlin, (float)omega);
             break;

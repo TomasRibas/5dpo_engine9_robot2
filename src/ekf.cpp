@@ -19,9 +19,12 @@ EKF::EKF() {
     I(2, 2) = 1.0;
 
     P.Fill(0.0);
-    P(0, 0) = 0.01;  // Initial uncertainty in x (m²)
-    P(1, 1) = 0.01;  // Initial uncertainty in y (m²)
-    P(2, 2) = 0.01;  // Initial uncertainty in theta (rad²)
+    // P(0, 0) = 0.01;  // Initial uncertainty in x (m²)
+    // P(1, 1) = 0.01;  // Initial uncertainty in y (m²)
+    // P(2, 2) = 0.01;  // Initial uncertainty in theta (rad²)
+    P(0,0) = 0.05;  // was 0.01 — ~22cm std dev in x
+    P(1,1) = 0.05;  // was 0.01 — ~22cm std dev in y
+    P(2,2) = 0.02;  // was 0.01 — ~8° std dev in theta
     
     Q.Fill(0.0);
     Q(0, 0) = pow(0.1, 2);   // Process noise for v_lin (m/s)²  pow(0.01, 2);
@@ -114,20 +117,20 @@ void EKF::covariancePropagation() {
 // Offset (bias): r_true = r_raw + offset(r)
 // Gauss cubic fit: offset(r) = a·r³ + b·r² + c·r + d
 static double calOffset(double r) {
-    return -0.00827633*r*r*r + 0.009161*r*r + (-0.020808)*r + 0.060586;
+    return 0.00025449*r*r*r + 0.003916*r*r + (-0.000863)*r + 0.047234;
 }
 
 // Rrr: variance of distance measurement (m²)
 // Gauss cubic fit
 static double calRrr(double r) {
-    double v = -0.00000127*r*r*r + 0.000007*r*r + (-0.000005)*r + 0.000001;
+    double v = 0.00000141*r*r*r + 0.000001*r*r + (-0.000002)*r + 0.000001;
     return (v > 1e-8) ? v : 1e-8;  // floor to avoid zero variance
 }
 
 // Raa: variance of angle measurement (rad²)
 // Gauss cubic fit (coefficients in deg², converted to rad²)
 static double calRaa(double r) {
-    double deg2 = -0.01870396*r*r*r + 0.086466*r*r + (-0.118351)*r + 0.072489;
+    double deg2 = -0.01056515*r*r*r + 0.048585*r*r + (-0.067987)*r + 0.048199;
     if (deg2 < 0.005) deg2 = 0.005;  // floor at 0.005 deg²
     return deg2 * (M_PI / 180.0) * (M_PI / 180.0);  // convert to rad²
 }
