@@ -27,8 +27,10 @@ EKF::EKF() {
     P(2,2) = 0.02;  // was 0.01 — ~8° std dev in theta
     
     Q.Fill(0.0);
-    Q(0, 0) = pow(0.1, 2);   // Process noise for v_lin (m/s)²  pow(0.01, 2);
-    Q(1, 1) = pow(0.02, 2);   // Process noise for omega (rad/s)²
+    // Q(0, 0) = pow(0.1, 2);   // Process noise for v_lin (m/s)²  pow(0.01, 2);
+    // Q(1, 1) = pow(0.02, 2);   // Process noise for omega (rad/s)²
+    Q(0, 0) = pow(0.5, 2);   // Process noise for v_lin (m/s)²  pow(0.01, 2);
+    Q(1, 1) = pow(0.1, 2);   // Process noise for omega (rad/s)²    
 
     R.Fill(0.0);
     R(0, 0) = pow(0.05, 2);   // Initial/fallback — overwritten per-beacon by calRrr(r)

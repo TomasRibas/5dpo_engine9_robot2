@@ -25,7 +25,12 @@ float DIST_NEARLINE = 0.05f;
 // Line following omega gains
 float K_DIST = 9.0f;
 float K_ANG  = 4.0f;
-float K_DIST_I = 0.0f;  // start at 0, tune via command
+
+// float K_DIST_I = 0.0f;  // start at 0, tune via command
+// double distLine_integral = 0.0;
+float K_DIST_D = 0.0f;
+double kl_prev = 0.0;
+
 
 // Velocity ramp rate (m/s²) — 0 = disabled (instant step)
 float KV_RAMP = 0.4f;   // cmd: "kvramp"
@@ -44,7 +49,7 @@ double nearX = 0.0, nearY = 0.0;
 double error_dist_prev = 99999.0;
 double kl = 0.0;
 
-double distLine_integral = 0.0;
+
 
 double NormalizeAngle(double a) {
     while (a <= -M_PI) a += 2.0 * M_PI;
@@ -78,6 +83,7 @@ void resetFollowLine() {
     vlin = 0.0;
     omega = 0.0;
     vlin_ramp = 0.0;
+    kl_prev = 0.0;
 }
 
 void MotorVel(float v_req, float w_req) {
@@ -303,9 +309,15 @@ void followLine(double xi, double yi, double xf, double yf, double tf, int dir)
                 // Normal line following — dir flips vlin sign
                 vlin  = dir * VEL_LIN_NOM;
                 // omega = K_DIST * testSideLine * distLine + K_ANG * error_ang * VEL_ANG_NOM;
-                distLine_integral += testSideLine * distLine * 0.04;  // integrate with dt=40ms
-                distLine_integral = constrain(distLine_integral, -0.5, 0.5);  // anti-windup
-                omega = K_DIST * testSideLine * distLine + K_DIST_I * distLine_integral + K_ANG * error_ang * VEL_ANG_NOM;
+                // distLine_integral += testSideLine * distLine * 0.04;  // integrate with dt=40ms
+                // distLine_integral = constrain(distLine_integral, -0.5, 0.5);  // anti-windup
+                // omega = K_DIST * testSideLine * distLine + K_DIST_I * distLine_integral + K_ANG * error_ang * VEL_ANG_NOM;
+                double kl_dot = (kl - kl_prev) / 0.04;
+                kl_prev = kl;
+
+                omega = K_DIST * kl
+                    + K_DIST_D * kl_dot
+                    + K_ANG * error_ang * VEL_ANG_NOM;
             }
             MotorVel((float)vlin, (float)omega);
             break;

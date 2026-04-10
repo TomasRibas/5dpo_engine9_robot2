@@ -37,7 +37,9 @@ extern float DIST_NEARLINE;  // Distance to return to follow line - cmd: "dnel"
 extern float K_DIST;         // Gain for distance-to-line correction - cmd: "kdst"
 extern float K_ANG;          // Gain for angle error correction - cmd: "kang"
 extern float KV_RAMP;        // Velocity ramp rate m/s² (0=disabled) - cmd: "kvramp"
-extern float K_DIST_I;      // Integral gain for lateral error - cmd: "kdsti"
+
+//extern float K_DIST_I;      // Integral gain for lateral error - cmd: "kdsti"
+extern float K_DIST_D;  // Derivative gain for lateral error - cmd: "kdsdt"
 
 // ----- State Enums -----
 enum FollowLineState {
