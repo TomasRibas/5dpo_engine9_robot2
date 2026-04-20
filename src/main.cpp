@@ -101,31 +101,6 @@ void init_followline_pars() {
     fl_pars.reset_requested = false;
 }
 
-// --- 1. New parameter struct (alongside FollowLinePars) ---
- 
-// --- 2. Parameter struct (alongside FollowLinePars) ---
-struct FollowCirclePars {
-    float xc;
-    float yc;
-    float R;
-    float angf;
-    float tf;
-    int   dir;      // +1 = CCW,  -1 = CW
-    bool  enabled;
-    bool  reset_requested;
-} fc_pars;
- 
-void init_followcircle_pars() {
-    fc_pars.xc      =  0.0f;
-    fc_pars.yc      =  0.0f;   // default: robot at (0,0) is on top of circle
-    fc_pars.R       =  0.1f;
-    fc_pars.angf    =  1.57f;
-    fc_pars.tf      =  1.57f;
-    fc_pars.dir     =  1;
-    fc_pars.enabled =  false;
-    fc_pars.reset_requested = false;
-}
-
 bool rev_active = false;
 float rev_speed  = 0.0f;
 
@@ -378,27 +353,6 @@ void process_command(command_frame_t frame)
       resetFollowLine();
       setPose(ekf.XR(0), ekf.XR(1), ekf.XR(2));
     }
-  } else if (frame.command_is("fcxc")) { 
-      fc_pars.xc   = frame.value;
-  } else if (frame.command_is("fcyc")) { 
-      fc_pars.yc   = frame.value;
-  } else if (frame.command_is("fcR")) { 
-      fc_pars.R    = frame.value;
-  } else if (frame.command_is("fcaf")) { 
-      fc_pars.angf = frame.value;
-  } else if (frame.command_is("fctf")) { 
-      fc_pars.tf   = frame.value;
-  } else if (frame.command_is("fcdr")) { 
-      fc_pars.dir  = (int)frame.value; 
-  } else if (frame.command_is("fcen")) {
-      fc_pars.enabled = (frame.value != 0);
-      if (!fc_pars.enabled) { 
-        robot.v_req = 0; robot.w_req = 0; 
-      } else { 
-        resetFollowCircle(); 
-      }
-  } else if (frame.command_is("fcrst")) {
-      if (frame.value != 0) { fc_pars.reset_requested = true; fc_pars.enabled = true; }
   } else if (frame.command_is("revspd")) {
     rev_speed = frame.value;
     rev_active = (frame.value != 0.0f);
@@ -606,26 +560,6 @@ void serial_ComRobot()
   serial_commands.send_command("kd",  wheel_PID_pars.Kd);
   serial_commands.send_command("dz", wheel_PID_pars.dead_zone);
 
- 
-  // FollowCircle state & params
-  serial_commands.send_command("fcs",      (float)followCircleState);
-  serial_commands.send_command("fcen",     (float)(fc_pars.enabled ? 1 : 0));
-  serial_commands.send_command("fcxc",     fc_pars.xc);
-  serial_commands.send_command("fcyc",     fc_pars.yc);
-  serial_commands.send_command("fcR",      fc_pars.R);
-  serial_commands.send_command("fcaf",     fc_pars.angf);
-  serial_commands.send_command("fctf",     fc_pars.tf);
-  serial_commands.send_command("fcdr",     (float)fc_pars.dir);
-  // FollowCircle tuning
-  serial_commands.send_command("fcvln",    FC_VEL_LIN_NOM);
-  serial_commands.send_command("fcvan",    FC_VEL_ANG_NOM);
-  serial_commands.send_command("fclda",    FC_LinDeAccel);
-  serial_commands.send_command("fcwda",    FC_W_DA);
-  serial_commands.send_command("fctfd",    FC_TOL_FINDIST);
-  serial_commands.send_command("fcdda",    FC_DIST_DA);
-  serial_commands.send_command("fckang",   FC_K_ANG);
-  serial_commands.send_command("fckrad",   FC_K_RAD);
-  serial_commands.send_command("fckvramp", FC_KV_RAMP);
 
   serial_commands.send_command("revspd", rev_speed);
 
@@ -776,19 +710,6 @@ void setup() {
   //pars_list.register_command("kdsti", &K_DIST_I);
   pars_list.register_command("kdsdt", &K_DIST_D);
 
-  pars_list.register_command("fcvln",    &FC_VEL_LIN_NOM);
-  pars_list.register_command("fcvan",    &FC_VEL_ANG_NOM);
-  pars_list.register_command("fclda",    &FC_LinDeAccel);
-  pars_list.register_command("fcwda",    &FC_W_DA);
-  pars_list.register_command("fctfd",    &FC_TOL_FINDIST);
-  pars_list.register_command("fcdda",    &FC_DIST_DA);
-  pars_list.register_command("fcdnp",    &FC_DIST_NEWPOSE);
-  pars_list.register_command("fctda",    &FC_THETA_DA);
-  pars_list.register_command("fctnp",    &FC_THETA_NEWPOSE);
-  pars_list.register_command("fctft",    &FC_TOL_FINTHETA);
-  pars_list.register_command("fckang",   &FC_K_ANG);
-  pars_list.register_command("fckrad",   &FC_K_RAD);
-  pars_list.register_command("fckvramp", &FC_KV_RAMP);
 
   udp_commands.init(process_command, serial_write);
   serial_commands.init(process_command, serial_write);
@@ -956,15 +877,9 @@ void loop() {
     //   resetFollowLine();
     // }
 
-    if (fc_pars.reset_requested) {
-        fc_pars.reset_requested = false;
-        resetFollowCircle();
-    }
 
     if (fl_pars.enabled) {
       followLine(fl_pars.xi, fl_pars.yi, fl_pars.xf, fl_pars.yf, fl_pars.tf, fl_pars.dir);
-    }  else if (fc_pars.enabled) {
-      followCircle(fc_pars.xc, fc_pars.yc, fc_pars.R, fc_pars.angf, fc_pars.tf, fc_pars.dir);
     } else if (rev_active) {
       robot.setRobotVW(rev_speed, 0.0f);
     }
